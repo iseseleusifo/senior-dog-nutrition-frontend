@@ -211,6 +211,113 @@ const sharedStyles = `
 `;
 
 // ============================================
+// SHARED BOTTOM NAV COMPONENT
+// ============================================
+const BottomNav = ({ activeTab, onNavigate, onLogItem }) => {
+  return (
+    <nav className="bottom-nav">
+      <button 
+        className={`nav-item ${activeTab === 'home' ? 'active' : ''}`}
+        onClick={() => onNavigate('home')}
+      >
+        <span className="nav-icon">⌂</span>
+        <span className="nav-label">Today</span>
+      </button>
+      <button 
+        className={`nav-item ${activeTab === 'history' ? 'active' : ''}`}
+        onClick={() => onNavigate('history')}
+      >
+        <span className="nav-icon">◷</span>
+        <span className="nav-label">History</span>
+      </button>
+      <button className="log-button" onClick={onLogItem}>
+        <span>+</span>
+      </button>
+      <button 
+        className={`nav-item ${activeTab === 'routines' ? 'active' : ''}`}
+        onClick={() => onNavigate('routines')}
+      >
+        <span className="nav-icon">☆</span>
+        <span className="nav-label">Routines</span>
+      </button>
+      <button 
+        className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+        onClick={() => onNavigate('settings')}
+      >
+        <span className="nav-icon">⚙</span>
+        <span className="nav-label">Profile</span>
+      </button>
+      <style>{`
+        .bottom-nav {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          width: 100%;
+          max-width: 430px;
+          margin: 0 auto;
+          background: #FFFFFF;
+          border-top: 1px solid #EFEBE4;
+          display: flex;
+          justify-content: space-around;
+          align-items: flex-end;
+          padding: 12px 16px 28px;
+          box-sizing: border-box;
+          z-index: 100;
+        }
+        .nav-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 8px 12px;
+          min-width: 50px;
+        }
+        .nav-icon {
+          font-size: 20px;
+          color: #B5B0A8;
+          transition: color 0.2s ease;
+        }
+        .nav-item.active .nav-icon {
+          color: #2D5A3D;
+        }
+        .nav-label {
+          font-size: 11px;
+          color: #B5B0A8;
+          transition: color 0.2s ease;
+        }
+        .nav-item.active .nav-label {
+          color: #2D5A3D;
+          font-weight: 500;
+        }
+        .log-button {
+          width: 56px;
+          height: 56px;
+          border-radius: 50%;
+          background: #2D5A3D;
+          border: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          margin-top: -28px;
+          box-shadow: 0 4px 16px rgba(45, 90, 61, 0.3);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          color: white;
+          font-size: 28px;
+        }
+        .log-button:active {
+          transform: scale(0.98);
+        }
+      `}</style>
+    </nav>
+  );
+};
+
+// ============================================
 // WELCOME SCREEN
 // ============================================
 const WelcomeScreen = ({ onGetStarted }) => {
@@ -872,28 +979,6 @@ const HomeScreen = ({ profile, loggedItems, onLogItem, onViewHistory, onViewRout
       
       <div className="spacer"></div>
       
-      <nav className="bottom-nav animate-in delay-5">
-        <button className="nav-item active">
-          <span className="nav-icon">⌂</span>
-          <span className="nav-label">Today</span>
-        </button>
-        <button className="nav-item" onClick={onViewHistory}>
-          <span className="nav-icon">◷</span>
-          <span className="nav-label">History</span>
-        </button>
-        <button className="log-button" onClick={onLogItem}>
-          <span>+</span>
-        </button>
-        <button className="nav-item" onClick={onViewRoutines}>
-          <span className="nav-icon">☆</span>
-          <span className="nav-label">Routines</span>
-        </button>
-        <button className="nav-item" onClick={onViewProfile}>
-          <span className="nav-icon">⚙</span>
-          <span className="nav-label">Profile</span>
-        </button>
-      </nav>
-      
       <style>{homeStyles}</style>
     </div>
   );
@@ -1174,84 +1259,7 @@ const homeStyles = `
   }
   
   .spacer {
-    height: 20px;
-  }
-  
-  .bottom-nav {
-    position: fixed;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 100%;
-    max-width: 430px;
-    background: #FFFFFF;
-    border-top: 1px solid #EFEBE4;
-    display: flex;
-    justify-content: space-around;
-    align-items: flex-end;
-    padding: 12px 20px 28px;
-  }
-  
-  .nav-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 8px 16px;
-  }
-  
-  .nav-icon {
-    font-size: 20px;
-    color: #B5B0A8;
-    transition: color 0.2s ease;
-  }
-  
-  .nav-item.active .nav-icon {
-    color: #2D5A3D;
-  }
-  
-  .nav-label {
-    font-size: 11px;
-    color: #B5B0A8;
-    transition: color 0.2s ease;
-  }
-  
-  .nav-item.active .nav-label {
-    color: #2D5A3D;
-    font-weight: 500;
-  }
-  
-  .log-button {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: #2D5A3D;
-    border: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    margin-top: -28px;
-    box-shadow: 0 4px 16px rgba(45, 90, 61, 0.3);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-  
-  .log-button:hover {
-    transform: scale(1.05);
-    box-shadow: 0 6px 20px rgba(45, 90, 61, 0.4);
-  }
-  
-  .log-button:active {
-    transform: scale(0.98);
-  }
-  
-  .log-button span {
-    font-size: 28px;
-    color: #FFFFFF;
-    line-height: 1;
+    height: 100px;
   }
 `;
 
@@ -3381,6 +3389,11 @@ function App() {
           onViewRoutines={() => setCurrentScreen('routines')}
           onViewProfile={() => setCurrentScreen('settings')}
         />
+        <BottomNav 
+          activeTab="home"
+          onNavigate={setCurrentScreen}
+          onLogItem={handleLogItem}
+        />
       </div>
     );
   }
@@ -3392,6 +3405,11 @@ function App() {
         <HistoryScreen 
           onBack={() => setCurrentScreen('home')}
           onSelectDay={handleSelectDay}
+        />
+        <BottomNav 
+          activeTab="history"
+          onNavigate={setCurrentScreen}
+          onLogItem={handleLogItem}
         />
       </div>
     );
@@ -3420,6 +3438,11 @@ function App() {
           onBack={() => setCurrentScreen('home')}
           onUpdateProfile={handleUpdateProfile}
         />
+        <BottomNav 
+          activeTab="settings"
+          onNavigate={setCurrentScreen}
+          onLogItem={handleLogItem}
+        />
       </div>
     );
   }
@@ -3432,6 +3455,11 @@ function App() {
           onBack={() => setCurrentScreen('home')}
           onUseRoutine={handleUseRoutine}
           onCreateRoutine={() => console.log('Create routine')}
+        />
+        <BottomNav 
+          activeTab="routines"
+          onNavigate={setCurrentScreen}
+          onLogItem={handleLogItem}
         />
       </div>
     );

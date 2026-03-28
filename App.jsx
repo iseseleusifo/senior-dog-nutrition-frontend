@@ -3284,7 +3284,7 @@ const logStyles = `
 // ============================================
 // MAIN APP
 // ============================================
-export default function App() {
+function App() {
   const [currentScreen, setCurrentScreen] = useState('welcome');
   const [profile, setProfile] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);

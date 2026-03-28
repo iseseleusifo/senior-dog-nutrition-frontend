@@ -852,13 +852,6 @@ const NutritionCheckRing = ({ score, confidence }) => {
 
 // Nutrient Bar Component
 const NutrientBar = ({ name, percentage, status, icon }) => {
-  const [animatedWidth, setAnimatedWidth] = useState(0);
-  
-  useEffect(() => {
-    const timer = setTimeout(() => setAnimatedWidth(Math.min(percentage, 100)), 100);
-    return () => clearTimeout(timer);
-  }, [percentage]);
-  
   const getBarColor = (status) => {
     if (status === 'good') return '#2D5A3D';
     if (status === 'warning') return '#D4A03D';
@@ -868,9 +861,7 @@ const NutrientBar = ({ name, percentage, status, icon }) => {
   
   const getStatusText = (status, percentage) => {
     if (status === 'good') return '✓';
-    if (status === 'warning') return `${percentage}%`;
-    if (status === 'low') return `${percentage}%`;
-    return '';
+    return `${percentage}%`;
   };
   
   return (
@@ -884,7 +875,7 @@ const NutrientBar = ({ name, percentage, status, icon }) => {
           <div 
             className="nutrient-bar-fill"
             style={{ 
-              width: `${animatedWidth}%`,
+              width: `${Math.min(percentage, 100)}%`,
               background: getBarColor(status)
             }}
           />
@@ -2628,22 +2619,51 @@ const ItemTypeScreen = ({ onSelect, onClose }) => {
 };
 
 const EntryMethodScreen = ({ itemType, onSelect, onBack }) => {
-  const methods = [
-    { id: 'search', icon: '🔍', label: 'Search product', desc: 'For packaged or branded items', tag: 'Most accurate' },
-    { id: 'describe', icon: '✏️', label: 'Describe it', desc: 'For homemade, mixed, or leftovers', tag: null },
-  ];
+  // Different methods based on item type
+  const getMethodsForType = () => {
+    switch(itemType) {
+      case 'meal':
+        return [
+          { id: 'search', icon: '🔍', label: 'Search food', desc: 'Kibble, wet food, or ingredients', tag: 'Most accurate' },
+          { id: 'describe', icon: '✏️', label: 'Describe it', desc: 'Mixed meals or homemade', tag: null },
+        ];
+      case 'treat':
+        return [
+          { id: 'quick', icon: '⚡', label: 'Quick add', desc: 'Common treats with preset calories', tag: 'Fastest' },
+          { id: 'search', icon: '🔍', label: 'Search treat', desc: 'Find specific brand or type', tag: null },
+        ];
+      case 'supplement':
+        return [
+          { id: 'quick', icon: '⚡', label: 'Quick add', desc: 'Fish oil, vitamins, joint chews', tag: 'Fastest' },
+          { id: 'search', icon: '🔍', label: 'Search supplement', desc: 'Find specific brand', tag: null },
+        ];
+      case 'extra':
+        return [
+          { id: 'search', icon: '🔍', label: 'Search ingredient', desc: 'Chicken, veggies, toppers', tag: 'Most accurate' },
+          { id: 'describe', icon: '✏️', label: 'Describe it', desc: 'Table scraps or mixed extras', tag: null },
+        ];
+      default:
+        return [
+          { id: 'search', icon: '🔍', label: 'Search', desc: 'Find in database', tag: null },
+          { id: 'describe', icon: '✏️', label: 'Describe it', desc: 'Estimate from description', tag: null },
+        ];
+    }
+  };
+  
+  const methods = getMethodsForType();
+  const typeLabels = { meal: 'meal', treat: 'treat', supplement: 'supplement', extra: 'extra' };
   
   return (
     <div className="screen">
       <div className="top-bar">
         <button className="back-button" onClick={onBack}>←</button>
-        <span className="top-bar-title">Log {itemType}</span>
+        <span className="top-bar-title">Log {typeLabels[itemType] || itemType}</span>
         <div style={{ width: 40 }}></div>
       </div>
       
       <div className="screen-content">
         <div className="screen-header animate-in">
-          <h1 className="screen-title">How do you want to log this?</h1>
+          <h1 className="screen-title">How do you want to add this?</h1>
         </div>
         
         <div className="method-list">
@@ -2667,6 +2687,212 @@ const EntryMethodScreen = ({ itemType, onSelect, onBack }) => {
         </div>
       </div>
       
+      <style>{logStyles}</style>
+    </div>
+  );
+};
+
+// Quick Add screen for treats and supplements
+const QuickAddScreen = ({ itemType, onSave, onBack, onSearchInstead }) => {
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [amount, setAmount] = useState('1');
+  
+  const quickItems = itemType === 'treat' ? [
+    { id: 't1', name: 'Training treat (small)', cal: 5, unit: 'piece', icon: '🦴' },
+    { id: 't2', name: 'Biscuit treat', cal: 35, unit: 'piece', icon: '🍪' },
+    { id: 't3', name: 'Dental chew', cal: 70, unit: 'piece', icon: '🦷' },
+    { id: 't4', name: 'Jerky strip', cal: 30, unit: 'piece', icon: '🥓' },
+    { id: 't5', name: 'Cheese cube', cal: 40, unit: 'piece', icon: '🧀' },
+    { id: 't6', name: 'Freeze-dried meat', cal: 15, unit: 'piece', icon: '🥩' },
+  ] : [
+    { id: 's1', name: 'Fish oil', cal: 15, unit: 'pump', icon: '🐟', nutrients: { omega3: 0.3 } },
+    { id: 's2', name: 'Salmon oil', cal: 15, unit: 'pump', icon: '🐠', nutrients: { omega3: 0.35 } },
+    { id: 's3', name: 'Glucosamine chew', cal: 10, unit: 'chew', icon: '💊' },
+    { id: 's4', name: 'Probiotic', cal: 5, unit: 'scoop', icon: '🦠' },
+    { id: 's5', name: 'Multivitamin', cal: 5, unit: 'tablet', icon: '💎' },
+    { id: 's6', name: 'Joint supplement', cal: 15, unit: 'chew', icon: '🦴' },
+  ];
+  
+  const handleSave = () => {
+    if (!selectedItem) return;
+    const qty = parseFloat(amount) || 1;
+    onSave({
+      name: selectedItem.name,
+      calories: selectedItem.cal * qty,
+      amount: qty,
+      unit: selectedItem.unit,
+      nutrients: selectedItem.nutrients || {},
+      confidence: 'high'
+    });
+  };
+  
+  return (
+    <div className="screen">
+      <div className="top-bar">
+        <button className="back-button" onClick={onBack}>←</button>
+        <span className="top-bar-title">Quick add {itemType}</span>
+        <div style={{ width: 40 }}></div>
+      </div>
+      
+      <div className="screen-content">
+        <div className="screen-header animate-in">
+          <h1 className="screen-title">Pick a {itemType}</h1>
+          <p className="screen-subtitle">Tap to select, then set amount</p>
+        </div>
+        
+        <div className="quick-grid animate-in delay-1">
+          {quickItems.map((item) => (
+            <button 
+              key={item.id}
+              className={`quick-item ${selectedItem?.id === item.id ? 'selected' : ''}`}
+              onClick={() => setSelectedItem(item)}
+            >
+              <span className="quick-icon">{item.icon}</span>
+              <span className="quick-name">{item.name}</span>
+              <span className="quick-cal">{item.cal} kcal/{item.unit}</span>
+            </button>
+          ))}
+        </div>
+        
+        {selectedItem && (
+          <div className="quick-amount-section animate-in">
+            <label className="field-label">How many?</label>
+            <div className="quick-amount-row">
+              <button 
+                className="amount-btn"
+                onClick={() => setAmount(String(Math.max(1, (parseFloat(amount) || 1) - 1)))}
+              >−</button>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="quick-amount-input"
+                min="1"
+              />
+              <button 
+                className="amount-btn"
+                onClick={() => setAmount(String((parseFloat(amount) || 1) + 1))}
+              >+</button>
+              <span className="amount-unit">{selectedItem.unit}s</span>
+            </div>
+            <div className="quick-total">
+              Total: {Math.round(selectedItem.cal * (parseFloat(amount) || 1))} kcal
+            </div>
+          </div>
+        )}
+        
+        <div className="quick-actions animate-in delay-2">
+          {selectedItem && (
+            <button className="primary-button" onClick={handleSave}>
+              Add {itemType}
+            </button>
+          )}
+          <button className="text-link" onClick={onSearchInstead}>
+            Search for specific brand instead
+          </button>
+        </div>
+      </div>
+      
+      <style>{`
+        .quick-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          margin-bottom: 24px;
+        }
+        .quick-item {
+          background: #FFFFFF;
+          border: 2px solid #E8E4DC;
+          border-radius: 12px;
+          padding: 14px 12px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .quick-item:hover {
+          border-color: #2D5A3D;
+        }
+        .quick-item.selected {
+          border-color: #2D5A3D;
+          background: rgba(45, 90, 61, 0.05);
+        }
+        .quick-icon { font-size: 24px; }
+        .quick-name { 
+          font-size: 13px; 
+          font-weight: 500; 
+          color: #2D2A26;
+          text-align: center;
+        }
+        .quick-cal { 
+          font-size: 11px; 
+          color: #9A958E; 
+        }
+        .quick-amount-section {
+          background: #FFFFFF;
+          border-radius: 14px;
+          padding: 18px;
+          margin-bottom: 20px;
+          box-shadow: 0 2px 8px rgba(61, 58, 54, 0.06);
+        }
+        .quick-amount-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .amount-btn {
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          border: 2px solid #E8E4DC;
+          background: #FFFFFF;
+          font-size: 20px;
+          font-weight: 500;
+          color: #2D5A3D;
+          cursor: pointer;
+        }
+        .amount-btn:hover {
+          border-color: #2D5A3D;
+          background: rgba(45, 90, 61, 0.05);
+        }
+        .quick-amount-input {
+          width: 60px;
+          height: 44px;
+          border: 2px solid #E8E4DC;
+          border-radius: 10px;
+          text-align: center;
+          font-size: 18px;
+          font-weight: 500;
+          font-family: inherit;
+        }
+        .amount-unit {
+          font-size: 14px;
+          color: #7A756E;
+        }
+        .quick-total {
+          margin-top: 14px;
+          font-size: 15px;
+          font-weight: 500;
+          color: #2D5A3D;
+          text-align: center;
+        }
+        .quick-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          align-items: center;
+        }
+        .text-link {
+          background: none;
+          border: none;
+          color: #7A756E;
+          font-size: 14px;
+          cursor: pointer;
+          text-decoration: underline;
+        }
+      `}</style>
       <style>{logStyles}</style>
     </div>
   );
@@ -3859,11 +4085,15 @@ function App() {
   }
   
   if (currentScreen === 'history') {
+    // Merge todayLog into allLogs for display
+    const today = getTodayKey();
+    const mergedLogs = { ...allLogs, [today]: todayLog };
+    
     return (
       <div className="app-container">
         <style>{sharedStyles}</style>
         <HistoryScreen 
-          allLogs={allLogs}
+          allLogs={mergedLogs}
           onBack={() => setCurrentScreen('home')}
           onSelectDay={handleSelectDay}
         />
@@ -3943,9 +4173,24 @@ function App() {
             itemType={itemType}
             onSelect={(method) => { 
               setEntryMethod(method); 
-              setLogStep(method === 'search' ? 'productSearch' : 'describe'); 
+              if (method === 'search') {
+                setLogStep('productSearch');
+              } else if (method === 'quick') {
+                setLogStep('quickAdd');
+              } else {
+                setLogStep('describe');
+              }
             }}
             onBack={() => setLogStep('itemType')}
+          />
+        )}
+        
+        {logStep === 'quickAdd' && (
+          <QuickAddScreen 
+            itemType={itemType}
+            onSave={handleLogComplete}
+            onBack={() => setLogStep('entryMethod')}
+            onSearchInstead={() => setLogStep('productSearch')}
           />
         )}
         

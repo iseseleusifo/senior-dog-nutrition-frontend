@@ -2702,7 +2702,12 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
             id: p.id,
             brand: p.brand,
             name: p.name,
-            cal: p.kcal_per_serving ? `${Math.round(p.kcal_per_serving)} kcal/${p.serving_size || 'serving'}` : ''
+            type: p.type || 'product',
+            display: p.display || (p.brand ? `${p.brand} ${p.name}` : p.name),
+            cal: p.subtitle || (p.kcal_per_serving ? `${Math.round(p.kcal_per_serving)} kcal/${p.serving_unit || 'serving'}` : ''),
+            kcal_per_serving: p.kcal_per_serving,
+            serving_unit: p.serving_unit,
+            nutrients: p.nutrients || {}
           })));
         }
       } catch (err) {
@@ -2722,7 +2727,7 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
     <div className="screen">
       <div className="top-bar">
         <button className="back-button" onClick={onBack}>←</button>
-        <span className="top-bar-title">Search product</span>
+        <span className="top-bar-title">Search food</span>
         <div style={{ width: 40 }}></div>
       </div>
       
@@ -2731,7 +2736,7 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
           <span className="search-icon">🔍</span>
           <input
             type="text"
-            placeholder="Search brand or product..."
+            placeholder="Search food, ingredient, or brand..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setFocused(true)}
@@ -2743,29 +2748,43 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
           )}
         </div>
         
+        {loading && <p className="loading-hint">Searching...</p>}
+        
         <h3 className="section-label">{showResults ? 'Results' : 'Recent'}</h3>
         
         <div className="product-list">
           {products.map((product, i) => (
             <button 
               key={product.id}
-              className={`product-card animate-in delay-${i + 1}`}
+              className={`product-card animate-in delay-${Math.min(i + 1, 5)}`}
               onClick={() => onSelect(product)}
             >
               <div className="product-info">
-                <span className="product-brand">{product.brand}</span>
-                <span className="product-name">{product.name}</span>
+                {product.brand ? (
+                  <>
+                    <span className="product-brand">{product.brand}</span>
+                    <span className="product-name">{product.name}</span>
+                  </>
+                ) : (
+                  <span className="product-name">{product.name}</span>
+                )}
               </div>
-              <span className="product-cal">{product.cal}</span>
+              <div className="product-right">
+                <span className="product-cal">{product.cal}</span>
+                <span className={`product-type-badge ${product.type}`}>
+                  {product.type === 'ingredient' ? 'Ingredient' : 'Product'}
+                </span>
+              </div>
             </button>
           ))}
+          {showResults && products.length === 0 && !loading && (
+            <p className="no-results">No matches found</p>
+          )}
         </div>
         
-        {!showResults && (
-          <p className="search-hint">
-            Can't find it? <button className="link-btn" onClick={onDescribe}>Describe it instead</button>
-          </p>
-        )}
+        <p className="search-hint">
+          Can't find it? <button className="link-btn" onClick={onDescribe}>Describe it instead</button>
+        </p>
       </div>
       
       <style>{logStyles}</style>
@@ -3310,7 +3329,7 @@ const logStyles = `
     width: 100%;
   }
   .product-card:hover { border-color: #2D5A3D; }
-  .product-info { display: flex; flex-direction: column; gap: 3px; }
+  .product-info { display: flex; flex-direction: column; gap: 3px; flex: 1; }
   .product-brand {
     font-size: 12px;
     color: #9A958E;
@@ -3318,12 +3337,46 @@ const logStyles = `
     letter-spacing: 0.5px;
   }
   .product-name { font-size: 15px; font-weight: 500; color: #2D2A26; }
+  .product-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
   .product-cal {
     font-size: 13px;
     color: #7A756E;
-    background: #F5F2ED;
-    padding: 4px 10px;
-    border-radius: 8px;
+  }
+  .product-type-badge {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+  .product-type-badge.ingredient {
+    background: rgba(45, 90, 61, 0.1);
+    color: #2D5A3D;
+  }
+  .product-type-badge.product {
+    background: rgba(212, 160, 61, 0.15);
+    color: #8B6914;
+  }
+  
+  .loading-hint {
+    font-size: 14px;
+    color: #9A958E;
+    text-align: center;
+    padding: 12px 0;
+  }
+  
+  .no-results {
+    font-size: 14px;
+    color: #9A958E;
+    text-align: center;
+    padding: 20px 0;
+    font-style: italic;
   }
   
   .search-hint {

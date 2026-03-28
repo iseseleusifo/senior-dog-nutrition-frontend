@@ -2761,7 +2761,6 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
   
   const confidenceColor = estimate.confidence === 'high' ? '#2D5A3D' : 
                           estimate.confidence === 'medium' ? '#D4A03D' : '#C45C3E';
-  }
   
   return (
     <div className="screen">

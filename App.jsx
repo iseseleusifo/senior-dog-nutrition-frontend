@@ -1,6 +1,57 @@
 const { useState, useEffect } = React;
 
 // ============================================
+// LOCAL STORAGE HELPERS
+// ============================================
+const Storage = {
+  get: (key, defaultValue = null) => {
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : defaultValue;
+    } catch (e) {
+      console.error('Storage get error:', e);
+      return defaultValue;
+    }
+  },
+  set: (key, value) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      console.error('Storage set error:', e);
+    }
+  },
+  remove: (key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      console.error('Storage remove error:', e);
+    }
+  }
+};
+
+// Storage keys
+const STORAGE_KEYS = {
+  PROFILE: 'sdn_profile',
+  DAILY_LOGS: 'sdn_daily_logs',
+  ROUTINES: 'sdn_routines',
+  ONBOARDING_COMPLETE: 'sdn_onboarding_complete'
+};
+
+// Get today's date key (YYYY-MM-DD)
+const getTodayKey = () => new Date().toISOString().split('T')[0];
+
+// Get or create today's log
+const getTodayLog = () => {
+  const logs = Storage.get(STORAGE_KEYS.DAILY_LOGS, {});
+  const today = getTodayKey();
+  if (!logs[today]) {
+    logs[today] = { date: today, items: [], totalCalories: 0 };
+    Storage.set(STORAGE_KEYS.DAILY_LOGS, logs);
+  }
+  return logs[today];
+};
+
+// ============================================
 // SHARED STYLES
 // ============================================
 const sharedStyles = `
@@ -846,30 +897,95 @@ const NutrientBar = ({ name, percentage, status, icon }) => {
   );
 };
 
-const HomeScreen = ({ profile, loggedItems, onLogItem, onViewHistory, onViewRoutines, onViewProfile }) => {
-  const nutrients = [
-    { name: 'Protein', percentage: 92, status: 'good', icon: '🥩' },
-    { name: 'Fat', percentage: 78, status: 'good', icon: '🫒' },
-    { name: 'Fiber', percentage: 65, status: 'good', icon: '🌾' },
-    { name: 'Omega-3', percentage: 35, status: 'low', icon: '🐟' },
-    { name: 'Calcium', percentage: 82, status: 'good', icon: '🦴' },
-  ];
+const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory, onViewRoutines, onViewProfile }) => {
+  // Calculate real data from todayLog
+  const items = todayLog?.items || [];
+  const totalCalories = todayLog?.totalCalories || 0;
   
-  const calories = { current: 780, min: 720, max: 850 };
-  const calorieStatus = calories.current > calories.max ? 'high' : calories.current < calories.min ? 'low' : 'good';
+  // Calculate calorie targets based on profile
+  const weightKg = profile?.weight || 15;
+  const activityMultiplier = profile?.activityLevel === 'active' ? 1.6 : profile?.activityLevel === 'low' ? 1.2 : 1.4;
+  const baseCalories = Math.round(70 * Math.pow(weightKg, 0.75) * activityMultiplier);
+  const calorieMin = Math.round(baseCalories * 0.9);
+  const calorieMax = Math.round(baseCalories * 1.1);
   
-  const gaps = [
-    { text: 'Omega-3 may be low', icon: '⚠' },
-    { text: 'No joint-support source logged', icon: '⚠' },
-  ];
+  const calories = { current: totalCalories, min: calorieMin, max: calorieMax };
+  const calorieStatus = totalCalories > calorieMax ? 'high' : totalCalories < calorieMin ? 'low' : 'good';
   
-  const fixes = [
-    'Add fish oil supplement',
-    'Try sardine topper 2x weekly',
-  ];
+  // Calculate nutrient totals from logged items
+  const calculateNutrients = () => {
+    if (items.length === 0) {
+      return [
+        { name: 'Protein', percentage: 0, status: 'low', icon: '🥩' },
+        { name: 'Fat', percentage: 0, status: 'low', icon: '🫒' },
+        { name: 'Fiber', percentage: 0, status: 'low', icon: '🌾' },
+        { name: 'Omega-3', percentage: 0, status: 'low', icon: '🐟' },
+        { name: 'Calcium', percentage: 0, status: 'low', icon: '🦴' },
+      ];
+    }
+    
+    // Sum nutrients from all items
+    const totals = { protein: 0, fat: 0, fiber: 0, omega3: 0, calcium: 0 };
+    items.forEach(item => {
+      if (item.nutrients) {
+        totals.protein += item.nutrients.protein || 0;
+        totals.fat += item.nutrients.fat || 0;
+        totals.fiber += item.nutrients.fiber || 0;
+        totals.omega3 += item.nutrients.omega3 || 0;
+        totals.calcium += item.nutrients.calcium || 0;
+      }
+    });
+    
+    // AAFCO senior targets (per 1000 kcal, scaled to actual calories)
+    const scaleFactor = totalCalories > 0 ? totalCalories / 1000 : 1;
+    const targets = {
+      protein: 56.3 * scaleFactor,
+      fat: 13.8 * scaleFactor,
+      fiber: 5 * scaleFactor,
+      omega3: 110 * scaleFactor / 1000, // Convert mg to g
+      calcium: 1.25 * scaleFactor
+    };
+    
+    const getStatus = (pct) => pct >= 80 ? 'good' : pct >= 50 ? 'warning' : 'low';
+    
+    return [
+      { name: 'Protein', percentage: Math.min(100, Math.round((totals.protein / targets.protein) * 100)) || 0, status: getStatus((totals.protein / targets.protein) * 100), icon: '🥩' },
+      { name: 'Fat', percentage: Math.min(100, Math.round((totals.fat / targets.fat) * 100)) || 0, status: getStatus((totals.fat / targets.fat) * 100), icon: '🫒' },
+      { name: 'Fiber', percentage: Math.min(100, Math.round((totals.fiber / targets.fiber) * 100)) || 0, status: getStatus((totals.fiber / targets.fiber) * 100), icon: '🌾' },
+      { name: 'Omega-3', percentage: Math.min(100, Math.round((totals.omega3 / targets.omega3) * 100)) || 0, status: getStatus((totals.omega3 / targets.omega3) * 100), icon: '🐟' },
+      { name: 'Calcium', percentage: Math.min(100, Math.round((totals.calcium / targets.calcium) * 100)) || 0, status: getStatus((totals.calcium / targets.calcium) * 100), icon: '🦴' },
+    ];
+  };
   
-  const itemCount = loggedItems.length;
-  const confidence = itemCount >= 4 ? 'High' : itemCount >= 2 ? 'Medium' : 'Low';
+  const nutrients = calculateNutrients();
+  
+  // Calculate gaps based on low nutrients
+  const gaps = nutrients
+    .filter(n => n.status === 'low' || n.status === 'warning')
+    .map(n => ({ text: `${n.name} may be low`, icon: '⚠' }));
+  
+  // Suggested fixes based on gaps
+  const fixes = [];
+  if (nutrients.find(n => n.name === 'Omega-3' && n.status !== 'good')) {
+    fixes.push('Add fish oil supplement');
+  }
+  if (nutrients.find(n => n.name === 'Protein' && n.status !== 'good')) {
+    fixes.push('Add a protein-rich meal or topper');
+  }
+  if (nutrients.find(n => n.name === 'Fiber' && n.status !== 'good')) {
+    fixes.push('Consider adding pumpkin or vegetables');
+  }
+  
+  const itemCount = items.length;
+  const confidence = itemCount >= 4 ? 'High' : itemCount >= 2 ? 'Medium' : itemCount > 0 ? 'Low' : 'No data';
+  
+  // Format items for display
+  const displayItems = items.map(item => ({
+    id: item.id,
+    time: item.time,
+    name: item.brand ? `${item.type} · ${item.brand} ${item.name}` : `${item.type} · ${item.name}`,
+    calories: item.calories
+  }));
   
   return (
     <div className="screen home-screen">
@@ -960,18 +1076,25 @@ const HomeScreen = ({ profile, loggedItems, onLogItem, onViewHistory, onViewRout
           <h3 className="section-label">Logged today</h3>
           <span className="logged-count">{itemCount} items</span>
         </div>
-        {loggedItems.length === 0 ? (
+        {displayItems.length === 0 ? (
           <p className="empty-text">Nothing logged yet. Tap + to add.</p>
         ) : (
           <div className="logged-list">
-            {loggedItems.slice(0, 3).map((item, i) => (
-              <div key={i} className="logged-item">
+            {displayItems.slice(0, 5).map((item, i) => (
+              <div key={item.id || i} className="logged-item">
                 <span className="logged-time">{item.time}</span>
                 <span className="logged-name">{item.name}</span>
+                {item.calories > 0 && <span className="logged-cal">{item.calories} kcal</span>}
+                <button 
+                  className="delete-btn"
+                  onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
+                >
+                  ×
+                </button>
               </div>
             ))}
-            {loggedItems.length > 3 && (
-              <span className="logged-more">+{loggedItems.length - 3} more</span>
+            {displayItems.length > 5 && (
+              <span className="logged-more">+{displayItems.length - 5} more</span>
             )}
           </div>
         )}
@@ -1242,6 +1365,29 @@ const homeStyles = `
   .logged-name {
     font-size: 13px;
     color: #5C5852;
+    flex: 1;
+  }
+  
+  .logged-cal {
+    font-size: 12px;
+    color: #9A958E;
+    margin-right: 4px;
+  }
+  
+  .delete-btn {
+    background: none;
+    border: none;
+    color: #B5B0A8;
+    font-size: 18px;
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+  }
+  
+  .delete-btn:hover {
+    background: rgba(139, 58, 58, 0.1);
+    color: #8B3A3A;
   }
   
   .logged-more {
@@ -2559,7 +2705,26 @@ const AmountScreen = ({ product, onSave, onBack }) => {
   const [unit, setUnit] = useState('cup');
   
   const units = ['cup', '½ cup', 'scoop', 'can'];
-  const estimatedCal = Math.round(parseFloat(amount || 0) * 380);
+  
+  // Parse calories from product
+  const baseCalories = product.kcal_per_serving || 
+    (product.cal ? parseInt(product.cal.match(/\d+/)?.[0] || 0) : 380);
+  
+  // Adjust for unit
+  const unitMultiplier = unit === '½ cup' ? 0.5 : 1;
+  const estimatedCal = Math.round(parseFloat(amount || 0) * baseCalories * unitMultiplier);
+  
+  const handleSave = () => {
+    onSave({
+      name: product.name,
+      brand: product.brand,
+      amount: parseFloat(amount) * unitMultiplier,
+      unit: unit === '½ cup' ? 'cup' : unit,
+      calories: estimatedCal,
+      nutrients: product.guaranteed_analysis || {},
+      confidence: 'high'
+    });
+  };
   
   return (
     <div className="screen">
@@ -2614,7 +2779,7 @@ const AmountScreen = ({ product, onSave, onBack }) => {
           </div>
         </div>
         
-        <button className="primary-button animate-in delay-4" onClick={onSave}>
+        <button className="primary-button animate-in delay-4" onClick={handleSave}>
           Save item
         </button>
       </div>
@@ -2692,6 +2857,7 @@ const DescribeScreen = ({ onEstimate, onBack }) => {
 const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [estimate, setEstimate] = useState(null);
+  const [rawNutrients, setRawNutrients] = useState({});
   const [error, setError] = useState(null);
   
   useEffect(() => {
@@ -2714,6 +2880,7 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
             totalCal: Math.round(data.nutrients.calories),
             confidence: data.confidence?.band || 'Medium'
           });
+          setRawNutrients(data.nutrients || {});
         } else {
           // Fallback to mock data if API fails
           setEstimate({
@@ -2721,6 +2888,7 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
             totalCal: 300,
             confidence: 'Low'
           });
+          setRawNutrients({ calories: 300 });
         }
       } catch (err) {
         console.error('Estimate error:', err);
@@ -2729,12 +2897,28 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
           totalCal: 300,
           confidence: 'Low'
         });
+        setRawNutrients({ calories: 300 });
       }
       setIsLoading(false);
     };
     
     fetchEstimate();
   }, [description]);
+  
+  const handleConfirm = () => {
+    onConfirm({
+      name: estimate.components.map(c => c.name).join(' + '),
+      calories: estimate.totalCal,
+      nutrients: {
+        protein: rawNutrients.protein || 0,
+        fat: rawNutrients.fat || 0,
+        fiber: rawNutrients.fiber || 0,
+        omega3: rawNutrients.omega3 || 0,
+        calcium: rawNutrients.calcium || 0
+      },
+      confidence: estimate.confidence.toLowerCase()
+    });
+  };
   
   if (isLoading) {
     return (
@@ -2813,7 +2997,7 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
         
         <div className="button-row animate-in delay-4">
           <button className="secondary-button" onClick={onEdit}>Edit</button>
-          <button className="primary-button" style={{ flex: 2 }} onClick={onConfirm}>Confirm</button>
+          <button className="primary-button" style={{ flex: 2 }} onClick={handleConfirm}>Confirm</button>
         </div>
       </div>
       
@@ -3293,14 +3477,13 @@ const logStyles = `
 // MAIN APP
 // ============================================
 function App() {
+  // Load initial state from localStorage
+  const [isLoading, setIsLoading] = useState(true);
   const [currentScreen, setCurrentScreen] = useState('welcome');
   const [profile, setProfile] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
-  const [loggedItems, setLoggedItems] = useState([
-    { time: '8:00', name: 'Breakfast · Senior kibble' },
-    { time: '12:30', name: 'Treat · Training biscuits' },
-    { time: '18:00', name: 'Supplement · Fish oil' },
-  ]);
+  const [todayLog, setTodayLog] = useState({ date: getTodayKey(), items: [], totalCalories: 0 });
+  const [allLogs, setAllLogs] = useState({});
   
   // Log flow state
   const [logStep, setLogStep] = useState('itemType');
@@ -3308,6 +3491,46 @@ function App() {
   const [entryMethod, setEntryMethod] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [description, setDescription] = useState('');
+  const [estimatedNutrients, setEstimatedNutrients] = useState(null);
+  
+  // Load data from localStorage on mount
+  useEffect(() => {
+    const savedProfile = Storage.get(STORAGE_KEYS.PROFILE);
+    const savedLogs = Storage.get(STORAGE_KEYS.DAILY_LOGS, {});
+    const onboardingComplete = Storage.get(STORAGE_KEYS.ONBOARDING_COMPLETE, false);
+    
+    if (savedProfile) {
+      setProfile(savedProfile);
+    }
+    
+    setAllLogs(savedLogs);
+    
+    const today = getTodayKey();
+    if (savedLogs[today]) {
+      setTodayLog(savedLogs[today]);
+    }
+    
+    // Skip to home if onboarding already done
+    if (onboardingComplete && savedProfile) {
+      setCurrentScreen('home');
+    }
+    
+    setIsLoading(false);
+  }, []);
+  
+  // Save profile whenever it changes
+  useEffect(() => {
+    if (profile) {
+      Storage.set(STORAGE_KEYS.PROFILE, profile);
+    }
+  }, [profile]);
+  
+  // Save logs whenever they change
+  useEffect(() => {
+    if (Object.keys(allLogs).length > 0) {
+      Storage.set(STORAGE_KEYS.DAILY_LOGS, allLogs);
+    }
+  }, [allLogs]);
   
   const resetLogFlow = () => {
     setLogStep('itemType');
@@ -3315,10 +3538,12 @@ function App() {
     setEntryMethod(null);
     setSelectedProduct(null);
     setDescription('');
+    setEstimatedNutrients(null);
   };
   
   const handleProfileComplete = (p) => {
     setProfile(p);
+    Storage.set(STORAGE_KEYS.ONBOARDING_COMPLETE, true);
     setCurrentScreen('home');
   };
   
@@ -3331,15 +3556,64 @@ function App() {
     setCurrentScreen('log');
   };
   
-  const handleLogComplete = () => {
+  const handleLogComplete = (logData) => {
     const now = new Date();
     const time = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+    const today = getTodayKey();
+    
+    // Create the new item with full nutrient data
     const newItem = {
+      id: Date.now().toString(),
       time,
-      name: selectedProduct ? `${itemType} · ${selectedProduct.name}` : `${itemType} · ${description.slice(0, 30)}...`
+      type: itemType,
+      name: selectedProduct ? selectedProduct.name : (logData?.name || description.slice(0, 40)),
+      brand: selectedProduct?.brand || null,
+      amount: logData?.amount || 1,
+      unit: logData?.unit || 'serving',
+      calories: logData?.calories || selectedProduct?.kcal_per_serving || 0,
+      nutrients: logData?.nutrients || estimatedNutrients || {},
+      confidence: logData?.confidence || (selectedProduct ? 'high' : 'medium'),
+      source: selectedProduct ? 'database' : 'estimated'
     };
-    setLoggedItems(prev => [...prev, newItem]);
+    
+    // Update today's log
+    const updatedTodayLog = {
+      ...todayLog,
+      items: [...todayLog.items, newItem],
+      totalCalories: todayLog.totalCalories + (newItem.calories || 0)
+    };
+    
+    setTodayLog(updatedTodayLog);
+    
+    // Update all logs
+    const updatedAllLogs = {
+      ...allLogs,
+      [today]: updatedTodayLog
+    };
+    setAllLogs(updatedAllLogs);
+    
     setLogStep('success');
+  };
+  
+  const handleDeleteLogItem = (itemId) => {
+    const today = getTodayKey();
+    const itemToDelete = todayLog.items.find(item => item.id === itemId);
+    
+    if (!itemToDelete) return;
+    
+    const updatedTodayLog = {
+      ...todayLog,
+      items: todayLog.items.filter(item => item.id !== itemId),
+      totalCalories: todayLog.totalCalories - (itemToDelete.calories || 0)
+    };
+    
+    setTodayLog(updatedTodayLog);
+    
+    const updatedAllLogs = {
+      ...allLogs,
+      [today]: updatedTodayLog
+    };
+    setAllLogs(updatedAllLogs);
   };
   
   const handleSelectDay = (day) => {
@@ -3350,13 +3624,50 @@ function App() {
   const handleUseRoutine = (routine) => {
     const now = new Date();
     const time = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+    const today = getTodayKey();
+    
     const newItems = routine.items.map(item => ({
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       time,
-      name: `${item.type} · ${item.name}`
+      type: item.type,
+      name: item.name,
+      brand: item.brand || null,
+      amount: item.amount || 1,
+      unit: item.unit || 'serving',
+      calories: item.calories || 0,
+      nutrients: item.nutrients || {},
+      confidence: 'high',
+      source: 'routine'
     }));
-    setLoggedItems(prev => [...prev, ...newItems]);
+    
+    const addedCalories = newItems.reduce((sum, item) => sum + (item.calories || 0), 0);
+    
+    const updatedTodayLog = {
+      ...todayLog,
+      items: [...todayLog.items, ...newItems],
+      totalCalories: todayLog.totalCalories + addedCalories
+    };
+    
+    setTodayLog(updatedTodayLog);
+    
+    const updatedAllLogs = {
+      ...allLogs,
+      [today]: updatedTodayLog
+    };
+    setAllLogs(updatedAllLogs);
+    
     setCurrentScreen('home');
   };
+  
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <style>{sharedStyles}</style>
+        <div style={{ textAlign: 'center', color: '#7A756E' }}>Loading...</div>
+      </div>
+    );
+  }
   
   // Render screens
   if (currentScreen === 'welcome') {
@@ -3383,8 +3694,9 @@ function App() {
         <style>{sharedStyles}</style>
         <HomeScreen 
           profile={profile}
-          loggedItems={loggedItems}
+          todayLog={todayLog}
           onLogItem={handleLogItem}
+          onDeleteItem={handleDeleteLogItem}
           onViewHistory={() => setCurrentScreen('history')}
           onViewRoutines={() => setCurrentScreen('routines')}
           onViewProfile={() => setCurrentScreen('settings')}

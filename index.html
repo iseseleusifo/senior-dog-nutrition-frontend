@@ -3,28 +3,33 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#FAF8F3">
   <title>Senior Dog Nutrition</title>
-  <link rel="manifest" href="/manifest.json">
-  <style>
-    body { margin: 0; background: #FAF8F3; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>">
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    html, body, #root {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #FAF8F3;
+    }
+  </style>
   <script>
-    // API Configuration
     window.API_BASE_URL = 'https://senior-dog-nutrition.vercel.app';
   </script>
-  <script type="text/babel" src="/App.jsx"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" src="App.jsx"></script>
   <script type="text/babel">
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(React.createElement(App));
+    root.render(<App />);
   </script>
 </body>
 </html>

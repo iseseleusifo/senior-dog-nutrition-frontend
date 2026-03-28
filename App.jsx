@@ -926,13 +926,31 @@ const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory,
     
     // Sum nutrients from all items
     const totals = { protein: 0, fat: 0, fiber: 0, omega3: 0, calcium: 0 };
+    let hasNutrientData = false;
+    
     items.forEach(item => {
-      if (item.nutrients) {
+      // Check if item has actual nutrient data
+      if (item.nutrients && (item.nutrients.protein || item.nutrients.fat)) {
+        hasNutrientData = true;
         totals.protein += item.nutrients.protein || 0;
         totals.fat += item.nutrients.fat || 0;
         totals.fiber += item.nutrients.fiber || 0;
         totals.omega3 += item.nutrients.omega3 || 0;
         totals.calcium += item.nutrients.calcium || 0;
+      } else if (item.calories > 0) {
+        // Estimate nutrients from calories (typical senior dog food ratios)
+        // Protein: ~25% of calories = ~6.25g per 100kcal
+        // Fat: ~15% of calories = ~1.67g per 100kcal  
+        // Fiber: ~3% by weight
+        const calFactor = item.calories / 100;
+        totals.protein += 6.25 * calFactor;
+        totals.fat += 1.67 * calFactor;
+        totals.fiber += 0.5 * calFactor;
+        totals.calcium += 0.03 * calFactor;
+        // Omega-3 only if explicitly noted or supplement
+        if (item.type === 'Supplement' || (item.name && item.name.toLowerCase().includes('fish'))) {
+          totals.omega3 += 0.05 * calFactor;
+        }
       }
     });
     
@@ -942,18 +960,26 @@ const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory,
       protein: 56.3 * scaleFactor,
       fat: 13.8 * scaleFactor,
       fiber: 5 * scaleFactor,
-      omega3: 110 * scaleFactor / 1000, // Convert mg to g
+      omega3: 0.11 * scaleFactor, // 110mg = 0.11g per 1000kcal
       calcium: 1.25 * scaleFactor
     };
     
-    const getStatus = (pct) => pct >= 80 ? 'good' : pct >= 50 ? 'warning' : 'low';
+    const getStatus = (pct) => {
+      if (isNaN(pct) || pct === 0) return 'low';
+      return pct >= 80 ? 'good' : pct >= 50 ? 'warning' : 'low';
+    };
+    
+    const calcPct = (val, target) => {
+      if (target === 0) return 0;
+      return Math.min(100, Math.round((val / target) * 100));
+    };
     
     return [
-      { name: 'Protein', percentage: Math.min(100, Math.round((totals.protein / targets.protein) * 100)) || 0, status: getStatus((totals.protein / targets.protein) * 100), icon: '🥩' },
-      { name: 'Fat', percentage: Math.min(100, Math.round((totals.fat / targets.fat) * 100)) || 0, status: getStatus((totals.fat / targets.fat) * 100), icon: '🫒' },
-      { name: 'Fiber', percentage: Math.min(100, Math.round((totals.fiber / targets.fiber) * 100)) || 0, status: getStatus((totals.fiber / targets.fiber) * 100), icon: '🌾' },
-      { name: 'Omega-3', percentage: Math.min(100, Math.round((totals.omega3 / targets.omega3) * 100)) || 0, status: getStatus((totals.omega3 / targets.omega3) * 100), icon: '🐟' },
-      { name: 'Calcium', percentage: Math.min(100, Math.round((totals.calcium / targets.calcium) * 100)) || 0, status: getStatus((totals.calcium / targets.calcium) * 100), icon: '🦴' },
+      { name: 'Protein', percentage: calcPct(totals.protein, targets.protein), status: getStatus((totals.protein / targets.protein) * 100), icon: '🥩' },
+      { name: 'Fat', percentage: calcPct(totals.fat, targets.fat), status: getStatus((totals.fat / targets.fat) * 100), icon: '🫒' },
+      { name: 'Fiber', percentage: calcPct(totals.fiber, targets.fiber), status: getStatus((totals.fiber / targets.fiber) * 100), icon: '🌾' },
+      { name: 'Omega-3', percentage: calcPct(totals.omega3, targets.omega3), status: getStatus((totals.omega3 / targets.omega3) * 100), icon: '🐟' },
+      { name: 'Calcium', percentage: calcPct(totals.calcium, targets.calcium), status: getStatus((totals.calcium / targets.calcium) * 100), icon: '🦴' },
     ];
   };
   
@@ -1412,21 +1438,71 @@ const homeStyles = `
 // ============================================
 // HISTORY SCREEN
 // ============================================
-const HistoryScreen = ({ onBack, onSelectDay }) => {
-  const days = [
-    { date: 'Today', score: 78, confidence: 'Medium', status: 'partial', entries: 3, flags: ['Omega-3 low'] },
-    { date: 'Yesterday', score: 84, confidence: 'High', status: 'complete', entries: 5, flags: [] },
-    { date: 'Mar 26', score: 71, confidence: 'Medium', status: 'partial', entries: 4, flags: ['Calories high'] },
-    { date: 'Mar 25', score: 62, confidence: 'Low', status: 'low-confidence', entries: 2, flags: ['Incomplete'] },
-    { date: 'Mar 24', score: 88, confidence: 'High', status: 'complete', entries: 6, flags: [] },
-    { date: 'Mar 23', score: 79, confidence: 'Medium', status: 'complete', entries: 4, flags: ['Omega-3 low'] },
-    { date: 'Mar 22', score: 81, confidence: 'High', status: 'complete', entries: 5, flags: ['Omega-3 low'] },
-  ];
+const HistoryScreen = ({ allLogs, onBack, onSelectDay }) => {
+  // Convert allLogs object to sorted array
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr + 'T12:00:00');
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (dateStr === today.toISOString().split('T')[0]) return 'Today';
+    if (dateStr === yesterday.toISOString().split('T')[0]) return 'Yesterday';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
   
-  // Compute stats
-  const avgScore = Math.round(days.reduce((sum, d) => sum + d.score, 0) / days.length);
-  const lastWeekAvg = 72;
-  const scoreTrend = avgScore - lastWeekAvg;
+  const calculateDayScore = (log) => {
+    if (!log.items || log.items.length === 0) return 0;
+    const itemCount = log.items.length;
+    const hasCalories = log.totalCalories > 0;
+    // Simple scoring: more items + calories = higher score
+    const baseScore = Math.min(itemCount * 15, 60);
+    const calorieBonus = hasCalories ? 20 : 0;
+    const confidenceBonus = itemCount >= 4 ? 20 : itemCount >= 2 ? 10 : 0;
+    return Math.min(baseScore + calorieBonus + confidenceBonus, 100);
+  };
+  
+  const days = Object.entries(allLogs || {})
+    .sort((a, b) => b[0].localeCompare(a[0])) // Sort by date descending
+    .slice(0, 14) // Last 14 days
+    .map(([dateKey, log]) => {
+      const score = calculateDayScore(log);
+      const itemCount = log.items?.length || 0;
+      return {
+        dateKey,
+        date: formatDate(dateKey),
+        score,
+        confidence: itemCount >= 4 ? 'High' : itemCount >= 2 ? 'Medium' : 'Low',
+        status: itemCount >= 4 ? 'complete' : itemCount > 0 ? 'partial' : 'low-confidence',
+        entries: itemCount,
+        flags: score < 60 ? ['Needs attention'] : [],
+        totalCalories: log.totalCalories || 0,
+        items: log.items || []
+      };
+    });
+  
+  // Show empty state if no history
+  if (days.length === 0) {
+    return (
+      <div className="screen">
+        <div className="top-bar">
+          <button className="back-button" onClick={onBack}>←</button>
+          <span className="top-bar-title">History</span>
+          <div style={{ width: 40 }}></div>
+        </div>
+        <div className="screen-content" style={{ textAlign: 'center', paddingTop: 60 }}>
+          <p style={{ color: '#9A958E', fontSize: 15 }}>No history yet. Start logging to see your progress.</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Compute stats from last 7 days
+  const last7Days = days.slice(0, 7);
+  const avgScore = last7Days.length > 0 
+    ? Math.round(last7Days.reduce((sum, d) => sum + d.score, 0) / last7Days.length)
+    : 0;
+  const daysLogged = last7Days.filter(d => d.status !== 'low-confidence').length;
   
   const getScoreColor = (score) => {
     if (score >= 75) return '#2D5A3D';
@@ -1455,13 +1531,10 @@ const HistoryScreen = ({ onBack, onSelectDay }) => {
         <div className="weekly-summary-card animate-in">
           <div className="summary-header-row">
             <h3 className="summary-title">This week</h3>
-            <span className={`trend-badge ${scoreTrend >= 0 ? 'positive' : 'negative'}`}>
-              {scoreTrend >= 0 ? '↑' : '↓'} {Math.abs(scoreTrend)} vs last week
-            </span>
           </div>
           <div className="summary-inline">
             <span>Avg score: <strong>{avgScore}</strong></span>
-            <span>Days logged: <strong>{days.filter(d => d.status !== 'low-confidence').length}/7</strong></span>
+            <span>Days logged: <strong>{daysLogged}/7</strong></span>
           </div>
         </div>
         
@@ -2703,6 +2776,7 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
 const AmountScreen = ({ product, onSave, onBack }) => {
   const [amount, setAmount] = useState('1');
   const [unit, setUnit] = useState('cup');
+  const [timeOption, setTimeOption] = useState('now');
   
   const units = ['cup', '½ cup', 'scoop', 'can'];
   
@@ -2714,6 +2788,17 @@ const AmountScreen = ({ product, onSave, onBack }) => {
   const unitMultiplier = unit === '½ cup' ? 0.5 : 1;
   const estimatedCal = Math.round(parseFloat(amount || 0) * baseCalories * unitMultiplier);
   
+  const getTimeString = () => {
+    const now = new Date();
+    if (timeOption === 'now') {
+      return now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+    } else if (timeOption === 'morning') {
+      return '8:00';
+    } else {
+      return '12:00';
+    }
+  };
+  
   const handleSave = () => {
     onSave({
       name: product.name,
@@ -2722,7 +2807,8 @@ const AmountScreen = ({ product, onSave, onBack }) => {
       unit: unit === '½ cup' ? 'cup' : unit,
       calories: estimatedCal,
       nutrients: product.guaranteed_analysis || {},
-      confidence: 'high'
+      confidence: 'high',
+      time: getTimeString()
     });
   };
   
@@ -2773,9 +2859,18 @@ const AmountScreen = ({ product, onSave, onBack }) => {
         <div className="form-section animate-in delay-3">
           <label className="field-label">When?</label>
           <div className="time-options">
-            <button className="time-btn active">Now</button>
-            <button className="time-btn">This morning</button>
-            <button className="time-btn">Earlier</button>
+            <button 
+              className={`time-btn ${timeOption === 'now' ? 'active' : ''}`}
+              onClick={() => setTimeOption('now')}
+            >Now</button>
+            <button 
+              className={`time-btn ${timeOption === 'morning' ? 'active' : ''}`}
+              onClick={() => setTimeOption('morning')}
+            >This morning</button>
+            <button 
+              className={`time-btn ${timeOption === 'earlier' ? 'active' : ''}`}
+              onClick={() => setTimeOption('earlier')}
+            >Earlier</button>
           </div>
         </div>
         
@@ -3558,13 +3653,13 @@ function App() {
   
   const handleLogComplete = (logData) => {
     const now = new Date();
-    const time = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+    const defaultTime = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
     const today = getTodayKey();
     
     // Create the new item with full nutrient data
     const newItem = {
       id: Date.now().toString(),
-      time,
+      time: logData?.time || defaultTime,
       type: itemType,
       name: selectedProduct ? selectedProduct.name : (logData?.name || description.slice(0, 40)),
       brand: selectedProduct?.brand || null,
@@ -3715,6 +3810,7 @@ function App() {
       <div className="app-container">
         <style>{sharedStyles}</style>
         <HistoryScreen 
+          allLogs={allLogs}
           onBack={() => setCurrentScreen('home')}
           onSelectDay={handleSelectDay}
         />

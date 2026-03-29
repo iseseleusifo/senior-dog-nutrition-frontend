@@ -2167,7 +2167,7 @@ const ProfileSettingsScreen = ({ profile, onBack, onUpdateProfile }) => {
           <h3 className="section-label">Goal focus</h3>
           <div className="settings-card">
             <div className="setting-row single">
-              <span className="goal-current">{goalLabels[profile.goalFocus] || 'Healthy aging'}</span>
+              <span className="goal-current">{goalLabels[profile.goalFocus] || 'Not set'}</span>
               <button className="change-button">Change</button>
             </div>
           </div>

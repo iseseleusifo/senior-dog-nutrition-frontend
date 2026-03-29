@@ -293,7 +293,7 @@ const BottomNav = ({ activeTab, onNavigate, onLogItem }) => {
         onClick={() => onNavigate('routines')}
       >
         <span className="nav-icon">☆</span>
-        <span className="nav-label">Routines</span>
+        <span className="nav-label">Saved</span>
       </button>
       <button 
         className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
@@ -491,9 +491,9 @@ const ProfileSetupScreen = ({ onComplete }) => {
     age: '',
     weight: '',
     breed: '',
-    activityLevel: 'low',
-    neutered: 'yes',
-    goalFocus: 'healthy-aging'
+    activityLevel: '',
+    neutered: '',
+    goalFocus: ''
   });
   
   const updateProfile = (field, value) => {
@@ -1102,7 +1102,7 @@ const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory,
             {displayItems.slice(0, 5).map((item, i) => (
               <div key={item.id || i} className="logged-item">
                 <span className="logged-time">{item.time}</span>
-                <span className="logged-name">{item.name}</span>
+                <span className="logged-name">{item.type ? item.type.charAt(0).toUpperCase() + item.type.slice(1).toLowerCase() + ': ' : ''}{item.name}</span>
                 {item.calories > 0 && <span className="logged-cal">{item.calories} kcal</span>}
                 <button 
                   className="delete-btn"
@@ -1505,9 +1505,9 @@ const HistoryScreen = ({ allLogs, onBack, onSelectDay }) => {
   
   const getStatusLabel = (status) => {
     switch (status) {
-      case 'complete': return 'Complete';
-      case 'partial': return 'Partial';
-      case 'low-confidence': return 'Low confidence';
+      case 'complete': return 'Full day logged';
+      case 'partial': return 'Partial log';
+      case 'low-confidence': return 'Incomplete';
       default: return '';
     }
   };
@@ -1523,7 +1523,7 @@ const HistoryScreen = ({ allLogs, onBack, onSelectDay }) => {
       <div className="screen-content">
         <div className="weekly-summary-card animate-in">
           <div className="summary-header-row">
-            <h3 className="summary-title">This week</h3>
+            <h3 className="summary-title">Last 7 days</h3>
           </div>
           <div className="summary-inline">
             <span>Avg score: <strong>{avgScore}</strong></span>
@@ -1796,7 +1796,7 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
             {day.score}
           </div>
           <div className="day-summary-text">
-            <span className="day-status-label">{day.status === 'complete' ? 'Complete day' : 'Partial day'}</span>
+            <span className="day-status-label">{day.status === 'complete' ? 'Full day logged' : 'Partial log'}</span>
             <span className="day-confidence">{day.confidence} confidence</span>
           </div>
         </div>
@@ -1839,7 +1839,7 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
                 <div key={entry.id || i} className="timeline-entry-static">
                   <span className="entry-time">{entry.time}</span>
                   <div className="entry-details">
-                    <span className="entry-type">{entry.type}</span>
+                    <span className="entry-type">{entry.type ? entry.type.charAt(0).toUpperCase() + entry.type.slice(1).toLowerCase() : ''}</span>
                     <span className="entry-name">{entry.name}</span>
                   </div>
                   <span className="entry-cal">{entry.cal} kcal</span>
@@ -2373,13 +2373,13 @@ const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
     <div className="screen">
       <div className="top-bar">
         <button className="back-button" onClick={onBack}>←</button>
-        <span className="top-bar-title">Routines</span>
+        <span className="top-bar-title">Saved Meals</span>
         <div style={{ width: 40 }}></div>
       </div>
       
       <div className="screen-content">
         <div className="screen-header animate-in">
-          <h1 className="screen-title">Your routines</h1>
+          <h1 className="screen-title">Your saved meals</h1>
           <p className="screen-subtitle">Log multiple items with one tap</p>
         </div>
         
@@ -2388,24 +2388,24 @@ const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
             <div className="empty-icon">📋</div>
             <h3 className="empty-title">No routines yet</h3>
             <p className="empty-desc">
-              Create a routine for meals you feed regularly. For example:
+              Create a saved meal for combinations you feed regularly. For example:
             </p>
             <div className="example-routines">
               <div className="example-routine">
-                <span className="example-name">🌅 Morning routine</span>
+                <span className="example-name">🌅 Morning meal</span>
                 <span className="example-items">Kibble + fish oil</span>
               </div>
               <div className="example-routine">
-                <span className="example-name">🌙 Evening routine</span>
+                <span className="example-name">🌙 Evening meal</span>
                 <span className="example-items">Kibble + joint chew</span>
               </div>
               <div className="example-routine">
-                <span className="example-name">🎾 Training day</span>
+                <span className="example-name">🎾 Training treats</span>
                 <span className="example-items">Extra treats</span>
               </div>
             </div>
             <button className="primary-button" onClick={onCreateRoutine}>
-              Create your first routine
+              Create your first saved meal
             </button>
           </div>
         ) : (
@@ -2443,7 +2443,7 @@ const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
             
             <button className="create-routine-button animate-in delay-5" onClick={onCreateRoutine}>
               <span className="create-icon">+</span>
-              <span>Create new routine</span>
+              <span>Create new saved meal</span>
             </button>
           </>
         )}
@@ -3116,7 +3116,7 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
 const AmountScreen = ({ product, onSave, onBack }) => {
   const [amount, setAmount] = useState('1');
   const [unit, setUnit] = useState('cup');
-  const [timeOption, setTimeOption] = useState('now');
+  const [timeOption, setTimeOption] = useState('breakfast');
   
   const units = ['cup', '½ cup', 'scoop', 'can'];
   
@@ -3129,13 +3129,13 @@ const AmountScreen = ({ product, onSave, onBack }) => {
   const estimatedCal = Math.round(parseFloat(amount || 0) * baseCalories * unitMultiplier);
   
   const getTimeString = () => {
-    const now = new Date();
-    if (timeOption === 'now') {
-      return now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
-    } else if (timeOption === 'morning') {
-      return '8:00';
-    } else {
-      return '12:00';
+    // Return meal label directly - matches what user selected
+    switch(timeOption) {
+      case 'breakfast': return 'Breakfast';
+      case 'lunch': return 'Lunch';
+      case 'dinner': return 'Dinner';
+      case 'snack': return 'Snack';
+      default: return 'Snack';
     }
   };
   
@@ -3200,17 +3200,21 @@ const AmountScreen = ({ product, onSave, onBack }) => {
           <label className="field-label">When?</label>
           <div className="time-options">
             <button 
-              className={`time-btn ${timeOption === 'now' ? 'active' : ''}`}
-              onClick={() => setTimeOption('now')}
-            >Now</button>
+              className={`time-btn ${timeOption === 'breakfast' ? 'active' : ''}`}
+              onClick={() => setTimeOption('breakfast')}
+            >Breakfast</button>
             <button 
-              className={`time-btn ${timeOption === 'morning' ? 'active' : ''}`}
-              onClick={() => setTimeOption('morning')}
-            >This morning</button>
+              className={`time-btn ${timeOption === 'lunch' ? 'active' : ''}`}
+              onClick={() => setTimeOption('lunch')}
+            >Lunch</button>
             <button 
-              className={`time-btn ${timeOption === 'earlier' ? 'active' : ''}`}
-              onClick={() => setTimeOption('earlier')}
-            >Earlier</button>
+              className={`time-btn ${timeOption === 'dinner' ? 'active' : ''}`}
+              onClick={() => setTimeOption('dinner')}
+            >Dinner</button>
+            <button 
+              className={`time-btn ${timeOption === 'snack' ? 'active' : ''}`}
+              onClick={() => setTimeOption('snack')}
+            >Snack</button>
           </div>
         </div>
         

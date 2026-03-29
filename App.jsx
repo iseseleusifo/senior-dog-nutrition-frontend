@@ -1696,7 +1696,7 @@ const HistoryScreen = ({ allLogs, onBack, onSelectDay }) => {
 // ============================================
 // DAY DETAIL SCREEN
 // ============================================
-const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
+const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem, canEdit = true }) => {
   // Use real items from day data
   const entries = (day.items || []).map(item => ({
     id: item.id,
@@ -1854,9 +1854,13 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
           <span className="total-value">{totalCalories.toLocaleString()} kcal</span>
         </div>
         
-        <button className="secondary-button full-width animate-in delay-5" onClick={onAddItem}>
-          Add missed item
-        </button>
+        {canEdit ? (
+          <button className="secondary-button full-width animate-in delay-5" onClick={onAddItem}>
+            Add missed item
+          </button>
+        ) : (
+          <p className="read-only-notice animate-in delay-5">Past entries are read-only</p>
+        )}
         
         <div className="bottom-spacer"></div>
       </div>
@@ -2016,6 +2020,14 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
         .entry-cal {
           font-size: 13px;
           color: #7A756E;
+        }
+        
+        .read-only-notice {
+          text-align: center;
+          color: #9A958E;
+          font-size: 13px;
+          font-style: italic;
+          padding: 16px;
         }
         
         .day-total {
@@ -3280,6 +3292,8 @@ const EntryMethodScreen = ({ itemType, onSelect, onBack }) => {
 const QuickAddScreen = ({ itemType, onSave, onBack, onSearchInstead }) => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [amount, setAmount] = useState('1');
+  const [timeOption, setTimeOption] = useState('breakfast');
+  const [showSnackOptions, setShowSnackOptions] = useState(false);
   
   const quickItems = itemType === 'treat' ? [
     { id: 't1', name: 'Training treat (small)', cal: 5, unit: 'piece', icon: '🦴' },
@@ -3297,6 +3311,34 @@ const QuickAddScreen = ({ itemType, onSave, onBack, onSearchInstead }) => {
     { id: 's6', name: 'Joint supplement', cal: 15, unit: 'chew', icon: '🦴' },
   ];
   
+  const getTimeString = () => {
+    switch(timeOption) {
+      case 'breakfast': return 'Breakfast';
+      case 'lunch': return 'Lunch';
+      case 'dinner': return 'Dinner';
+      case 'morning-snack': return 'Morning snack';
+      case 'afternoon-snack': return 'Afternoon snack';
+      case 'evening-snack': return 'Evening snack';
+      default: return 'Snack';
+    }
+  };
+  
+  const handleTimeSelect = (option) => {
+    if (option === 'snack') {
+      setShowSnackOptions(true);
+    } else {
+      setTimeOption(option);
+      setShowSnackOptions(false);
+    }
+  };
+  
+  const handleSnackSelect = (snackType) => {
+    setTimeOption(snackType);
+    setShowSnackOptions(false);
+  };
+  
+  const isSnackSelected = ['morning-snack', 'afternoon-snack', 'evening-snack'].includes(timeOption);
+  
   const handleSave = () => {
     if (!selectedItem) return;
     const qty = parseFloat(amount) || 1;
@@ -3306,7 +3348,8 @@ const QuickAddScreen = ({ itemType, onSave, onBack, onSearchInstead }) => {
       amount: qty,
       unit: selectedItem.unit,
       nutrients: selectedItem.nutrients || {},
-      confidence: 'high'
+      confidence: 'high',
+      time: getTimeString()
     });
   };
   
@@ -3362,6 +3405,37 @@ const QuickAddScreen = ({ itemType, onSave, onBack, onSearchInstead }) => {
             <div className="quick-total">
               Total: {Math.round(selectedItem.cal * (parseFloat(amount) || 1))} kcal
             </div>
+          </div>
+        )}
+        
+        {selectedItem && (
+          <div className="form-section animate-in">
+            <label className="field-label">When?</label>
+            <div className="time-options">
+              <button 
+                className={`time-btn ${timeOption === 'breakfast' ? 'active' : ''}`}
+                onClick={() => handleTimeSelect('breakfast')}
+              >Breakfast</button>
+              <button 
+                className={`time-btn ${timeOption === 'lunch' ? 'active' : ''}`}
+                onClick={() => handleTimeSelect('lunch')}
+              >Lunch</button>
+              <button 
+                className={`time-btn ${timeOption === 'dinner' ? 'active' : ''}`}
+                onClick={() => handleTimeSelect('dinner')}
+              >Dinner</button>
+              <button 
+                className={`time-btn ${isSnackSelected ? 'active' : ''}`}
+                onClick={() => handleTimeSelect('snack')}
+              >Snack</button>
+            </div>
+            {showSnackOptions && (
+              <div className="snack-sub-options">
+                <button className={`snack-sub-btn ${timeOption === 'morning-snack' ? 'active' : ''}`} onClick={() => handleSnackSelect('morning-snack')}>Morning</button>
+                <button className={`snack-sub-btn ${timeOption === 'afternoon-snack' ? 'active' : ''}`} onClick={() => handleSnackSelect('afternoon-snack')}>Afternoon</button>
+                <button className={`snack-sub-btn ${timeOption === 'evening-snack' ? 'active' : ''}`} onClick={() => handleSnackSelect('evening-snack')}>Evening</button>
+              </div>
+            )}
           </div>
         )}
         
@@ -3482,15 +3556,50 @@ const QuickAddScreen = ({ itemType, onSave, onBack, onSearchInstead }) => {
   );
 };
 
-const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
+const ProductSearchScreen = ({ onSelect, onBack, onDescribe, savedMeals = [] }) => {
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('recent');
+  
+  // Common ingredients for client-side search
+  const commonIngredients = [
+    { id: 'ing-1', name: 'Cooked chicken breast', type: 'ingredient', category: 'protein', kcal_per_serving: 165, serving_unit: 'oz' },
+    { id: 'ing-2', name: 'Cooked ground beef', type: 'ingredient', category: 'protein', kcal_per_serving: 250, serving_unit: 'oz' },
+    { id: 'ing-3', name: 'Cooked turkey', type: 'ingredient', category: 'protein', kcal_per_serving: 170, serving_unit: 'oz' },
+    { id: 'ing-4', name: 'Boiled egg', type: 'ingredient', category: 'protein', kcal_per_serving: 78, serving_unit: 'piece' },
+    { id: 'ing-5', name: 'Scrambled egg', type: 'ingredient', category: 'protein', kcal_per_serving: 91, serving_unit: 'piece' },
+    { id: 'ing-6', name: 'Salmon (cooked)', type: 'ingredient', category: 'protein', kcal_per_serving: 180, serving_unit: 'oz' },
+    { id: 'ing-7', name: 'Canned sardines', type: 'ingredient', category: 'protein', kcal_per_serving: 125, serving_unit: 'oz' },
+    { id: 'ing-8', name: 'Cottage cheese', type: 'ingredient', category: 'dairy', kcal_per_serving: 25, serving_unit: 'tbsp' },
+    { id: 'ing-9', name: 'Plain yogurt', type: 'ingredient', category: 'dairy', kcal_per_serving: 15, serving_unit: 'tbsp' },
+    { id: 'ing-10', name: 'Cheese cube', type: 'ingredient', category: 'dairy', kcal_per_serving: 40, serving_unit: 'piece' },
+    { id: 'ing-11', name: 'Cooked white rice', type: 'ingredient', category: 'grain', kcal_per_serving: 105, serving_unit: 'cup' },
+    { id: 'ing-12', name: 'Cooked brown rice', type: 'ingredient', category: 'grain', kcal_per_serving: 110, serving_unit: 'cup' },
+    { id: 'ing-13', name: 'Oatmeal (cooked)', type: 'ingredient', category: 'grain', kcal_per_serving: 75, serving_unit: 'cup' },
+    { id: 'ing-14', name: 'Sweet potato (cooked)', type: 'ingredient', category: 'vegetable', kcal_per_serving: 90, serving_unit: 'cup' },
+    { id: 'ing-15', name: 'Pumpkin puree', type: 'ingredient', category: 'vegetable', kcal_per_serving: 40, serving_unit: 'cup' },
+    { id: 'ing-16', name: 'Carrot (cooked)', type: 'ingredient', category: 'vegetable', kcal_per_serving: 25, serving_unit: 'piece' },
+    { id: 'ing-17', name: 'Green beans (cooked)', type: 'ingredient', category: 'vegetable', kcal_per_serving: 20, serving_unit: 'cup' },
+    { id: 'ing-18', name: 'Broccoli (cooked)', type: 'ingredient', category: 'vegetable', kcal_per_serving: 30, serving_unit: 'cup' },
+    { id: 'ing-19', name: 'Spinach (cooked)', type: 'ingredient', category: 'vegetable', kcal_per_serving: 20, serving_unit: 'cup' },
+    { id: 'ing-20', name: 'Apple slices', type: 'ingredient', category: 'fruit', kcal_per_serving: 15, serving_unit: 'piece' },
+    { id: 'ing-21', name: 'Banana', type: 'ingredient', category: 'fruit', kcal_per_serving: 90, serving_unit: 'piece' },
+    { id: 'ing-22', name: 'Blueberries', type: 'ingredient', category: 'fruit', kcal_per_serving: 40, serving_unit: 'cup' },
+    { id: 'ing-23', name: 'Watermelon', type: 'ingredient', category: 'fruit', kcal_per_serving: 45, serving_unit: 'cup' },
+    { id: 'ing-24', name: 'Peanut butter', type: 'ingredient', category: 'other', kcal_per_serving: 95, serving_unit: 'tbsp' },
+    { id: 'ing-25', name: 'Chicken broth', type: 'ingredient', category: 'other', kcal_per_serving: 10, serving_unit: 'cup' },
+    { id: 'ing-26', name: 'Beef liver', type: 'ingredient', category: 'protein', kcal_per_serving: 135, serving_unit: 'oz' },
+    { id: 'ing-27', name: 'Chicken liver', type: 'ingredient', category: 'protein', kcal_per_serving: 120, serving_unit: 'oz' },
+    { id: 'ing-28', name: 'Ground lamb', type: 'ingredient', category: 'protein', kcal_per_serving: 240, serving_unit: 'oz' },
+    { id: 'ing-29', name: 'Canned tuna', type: 'ingredient', category: 'protein', kcal_per_serving: 100, serving_unit: 'oz' },
+    { id: 'ing-30', name: 'Zucchini (cooked)', type: 'ingredient', category: 'vegetable', kcal_per_serving: 15, serving_unit: 'cup' },
+  ];
   
   const recentProducts = [
-    { id: 1, brand: 'Purina Pro Plan', name: 'Senior 7+ Chicken & Rice', cal: '380 kcal/cup' },
-    { id: 2, brand: 'Blue Buffalo', name: 'Life Protection Senior', cal: '357 kcal/cup' },
+    { id: 1, brand: 'Purina Pro Plan', name: 'Senior 7+ Chicken & Rice', cal: '380 kcal/cup', type: 'product' },
+    { id: 2, brand: 'Blue Buffalo', name: 'Life Protection Senior', cal: '357 kcal/cup', type: 'product' },
   ];
   
   // Search API when query changes
@@ -3520,9 +3629,43 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
             serving_unit: p.serving_unit,
             nutrients: p.nutrients || {}
           })));
+          
+          // Also search local ingredients
+          const matchedIngredients = commonIngredients
+            .filter(ing => ing.name.toLowerCase().includes(query.toLowerCase()))
+            .map(ing => ({
+              ...ing,
+              brand: null,
+              display: ing.name,
+              cal: `${ing.kcal_per_serving} kcal/${ing.serving_unit}`
+            }));
+          
+          // Merge: ingredients first, then products
+          setSearchResults([...matchedIngredients, ...(data.results || []).map(p => ({
+            id: p.id,
+            brand: p.brand,
+            name: p.name,
+            type: p.type || 'product',
+            category: p.category || 'dry_food',
+            display: p.display || (p.brand ? `${p.brand} ${p.name}` : p.name),
+            cal: p.subtitle || (p.kcal_per_serving ? `${Math.round(p.kcal_per_serving)} kcal/${p.serving_unit || 'serving'}` : ''),
+            kcal_per_serving: p.kcal_per_serving,
+            serving_unit: p.serving_unit,
+            nutrients: p.nutrients || {}
+          }))]);
         }
       } catch (err) {
         console.error('Search error:', err);
+        // Still show ingredient results even if API fails
+        const matchedIngredients = commonIngredients
+          .filter(ing => ing.name.toLowerCase().includes(query.toLowerCase()))
+          .map(ing => ({
+            ...ing,
+            brand: null,
+            display: ing.name,
+            cal: `${ing.kcal_per_serving} kcal/${ing.serving_unit}`
+          }));
+        setSearchResults(matchedIngredients);
       }
       setLoading(false);
     };
@@ -3531,8 +3674,32 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
     return () => clearTimeout(timer);
   }, [query]);
   
+  // Content based on active tab
+  const getTabContent = () => {
+    if (query.length > 0) return searchResults;
+    switch (activeTab) {
+      case 'common':
+        return commonIngredients.slice(0, 12).map(ing => ({
+          ...ing,
+          brand: null,
+          display: ing.name,
+          cal: `${ing.kcal_per_serving} kcal/${ing.serving_unit}`
+        }));
+      case 'saved':
+        return savedMeals.map(meal => ({
+          id: meal.id,
+          name: meal.name,
+          type: 'saved_meal',
+          cal: `${meal.items?.reduce((sum, i) => sum + (i.calories || 0), 0) || 0} kcal total`,
+          items: meal.items
+        }));
+      default: // recent
+        return recentProducts;
+    }
+  };
+  
   const showResults = query.length > 0;
-  const products = showResults ? searchResults : recentProducts;
+  const products = getTabContent();
   
   return (
     <div className="screen">
@@ -3561,9 +3728,29 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
         
         {loading && <p className="loading-hint">Searching...</p>}
         
-        <h3 className="section-label">{showResults ? 'Results' : 'Recent'}</h3>
+        {!showResults && (
+          <div className="search-tabs">
+            <button 
+              className={`search-tab ${activeTab === 'recent' ? 'active' : ''}`}
+              onClick={() => setActiveTab('recent')}
+            >Recent</button>
+            <button 
+              className={`search-tab ${activeTab === 'common' ? 'active' : ''}`}
+              onClick={() => setActiveTab('common')}
+            >Common</button>
+            <button 
+              className={`search-tab ${activeTab === 'saved' ? 'active' : ''}`}
+              onClick={() => setActiveTab('saved')}
+            >Saved meals</button>
+          </div>
+        )}
+        
+        <h3 className="section-label">{showResults ? 'Results' : ''}</h3>
         
         <div className="product-list">
+          {products.length === 0 && activeTab === 'saved' && !showResults && (
+            <p className="empty-hint">No saved meals yet</p>
+          )}
           {products.map((product, i) => (
             <button 
               key={product.id}
@@ -3897,6 +4084,8 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
   const [estimate, setEstimate] = useState(null);
   const [rawNutrients, setRawNutrients] = useState({});
   const [error, setError] = useState(null);
+  const [timeOption, setTimeOption] = useState('breakfast');
+  const [showSnackOptions, setShowSnackOptions] = useState(false);
   
   useEffect(() => {
     const fetchEstimate = async () => {
@@ -3943,10 +4132,41 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
     fetchEstimate();
   }, [description]);
   
+  const getTimeString = () => {
+    switch(timeOption) {
+      case 'breakfast': return 'Breakfast';
+      case 'lunch': return 'Lunch';
+      case 'dinner': return 'Dinner';
+      case 'morning-snack': return 'Morning snack';
+      case 'afternoon-snack': return 'Afternoon snack';
+      case 'evening-snack': return 'Evening snack';
+      default: return 'Snack';
+    }
+  };
+  
+  const handleTimeSelect = (option) => {
+    if (option === 'snack') {
+      setShowSnackOptions(true);
+    } else {
+      setTimeOption(option);
+      setShowSnackOptions(false);
+    }
+  };
+  
+  const handleSnackSelect = (snackType) => {
+    setTimeOption(snackType);
+    setShowSnackOptions(false);
+  };
+  
+  const isSnackSelected = ['morning-snack', 'afternoon-snack', 'evening-snack'].includes(timeOption);
+  
   const handleConfirm = () => {
     onConfirm({
       name: estimate.components.map(c => c.name).join(' + '),
       calories: estimate.totalCal,
+      amount: 1,
+      unit: 'portion',
+      time: getTimeString(),
       nutrients: {
         protein: rawNutrients.protein || 0,
         fat: rawNutrients.fat || 0,
@@ -4031,9 +4251,38 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
           </div>
         </div>
         
-        <p className="disclaimer animate-in delay-3">This is an estimate. Adjust if needed.</p>
+        <div className="form-section animate-in delay-3">
+          <label className="field-label">When?</label>
+          <div className="time-options">
+            <button 
+              className={`time-btn ${timeOption === 'breakfast' ? 'active' : ''}`}
+              onClick={() => handleTimeSelect('breakfast')}
+            >Breakfast</button>
+            <button 
+              className={`time-btn ${timeOption === 'lunch' ? 'active' : ''}`}
+              onClick={() => handleTimeSelect('lunch')}
+            >Lunch</button>
+            <button 
+              className={`time-btn ${timeOption === 'dinner' ? 'active' : ''}`}
+              onClick={() => handleTimeSelect('dinner')}
+            >Dinner</button>
+            <button 
+              className={`time-btn ${isSnackSelected ? 'active' : ''}`}
+              onClick={() => handleTimeSelect('snack')}
+            >Snack</button>
+          </div>
+          {showSnackOptions && (
+            <div className="snack-sub-options">
+              <button className={`snack-sub-btn ${timeOption === 'morning-snack' ? 'active' : ''}`} onClick={() => handleSnackSelect('morning-snack')}>Morning</button>
+              <button className={`snack-sub-btn ${timeOption === 'afternoon-snack' ? 'active' : ''}`} onClick={() => handleSnackSelect('afternoon-snack')}>Afternoon</button>
+              <button className={`snack-sub-btn ${timeOption === 'evening-snack' ? 'active' : ''}`} onClick={() => handleSnackSelect('evening-snack')}>Evening</button>
+            </div>
+          )}
+        </div>
         
-        <div className="button-row animate-in delay-4">
+        <p className="disclaimer animate-in delay-4">This is an estimate. Adjust if needed.</p>
+        
+        <div className="button-row animate-in delay-5">
           <button className="secondary-button" onClick={onEdit}>Edit</button>
           <button className="primary-button" style={{ flex: 2 }} onClick={handleConfirm}>Confirm</button>
         </div>
@@ -4293,6 +4542,43 @@ const logStyles = `
     color: #9A958E;
     text-align: center;
     padding: 12px 0;
+  }
+  
+  .search-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  
+  .search-tab {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #E8E4DC;
+    border-radius: 20px;
+    background: #FFFFFF;
+    font-size: 13px;
+    font-weight: 500;
+    color: #7A756E;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  
+  .search-tab:hover {
+    border-color: #2D5A3D;
+  }
+  
+  .search-tab.active {
+    background: #2D5A3D;
+    border-color: #2D5A3D;
+    color: #FFFFFF;
+  }
+  
+  .empty-hint {
+    font-size: 14px;
+    color: #9A958E;
+    text-align: center;
+    padding: 24px 0;
+    font-style: italic;
   }
   
   .no-results {
@@ -4854,6 +5140,12 @@ function App() {
   }
   
   if (currentScreen === 'dayDetail') {
+    // Check if day is within editable window (last 7 days)
+    const today = new Date();
+    const dayDate = new Date(selectedDay.date);
+    const diffDays = Math.floor((today - dayDate) / (1000 * 60 * 60 * 24));
+    const canEdit = diffDays <= 7;
+    
     return (
       <div className="app-container">
         <style>{sharedStyles}</style>
@@ -4862,6 +5154,7 @@ function App() {
           onBack={() => setCurrentScreen('history')}
           onEditEntry={(entry) => console.log('Edit entry:', entry)}
           onAddItem={handleLogItem}
+          canEdit={canEdit}
         />
       </div>
     );
@@ -4972,9 +5265,20 @@ function App() {
         
         {logStep === 'productSearch' && (
           <ProductSearchScreen 
-            onSelect={(product) => { setSelectedProduct(product); setLogStep('amount'); }}
+            onSelect={(product) => { 
+              if (product.type === 'saved_meal') {
+                // Use saved meal directly
+                setPendingRoutine(product);
+                setCurrentScreen('routineTimePicker');
+                setLogStep(null);
+              } else {
+                setSelectedProduct(product); 
+                setLogStep('amount'); 
+              }
+            }}
             onBack={() => setLogStep('entryMethod')}
             onDescribe={() => setLogStep('describe')}
+            savedMeals={savedMeals}
           />
         )}
         

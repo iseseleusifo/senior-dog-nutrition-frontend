@@ -2667,6 +2667,107 @@ const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine, savedMeals = []
 };
 
 // ============================================
+// ROUTINE TIME PICKER SCREEN
+// ============================================
+const RoutineTimePickerScreen = ({ routine, onConfirm, onBack }) => {
+  const [showSnackOptions, setShowSnackOptions] = useState(false);
+  
+  return (
+    <div className="screen">
+      <div className="top-bar">
+        <button className="back-button" onClick={onBack}>←</button>
+        <span className="top-bar-title">Log Saved Meal</span>
+        <div style={{ width: 40 }}></div>
+      </div>
+      
+      <div className="screen-content">
+        <div className="screen-header animate-in">
+          <h1 className="screen-title">When did you feed this?</h1>
+          <p className="screen-subtitle">{routine?.name}</p>
+        </div>
+        
+        <div className="time-options animate-in delay-1">
+          <button className="time-option-btn" onClick={() => onConfirm('Breakfast')}>
+            <span className="time-icon">🌅</span>
+            <span>Breakfast</span>
+          </button>
+          <button className="time-option-btn" onClick={() => onConfirm('Lunch')}>
+            <span className="time-icon">☀️</span>
+            <span>Lunch</span>
+          </button>
+          <button className="time-option-btn" onClick={() => onConfirm('Dinner')}>
+            <span className="time-icon">🌙</span>
+            <span>Dinner</span>
+          </button>
+          <button 
+            className={`time-option-btn ${showSnackOptions ? 'active' : ''}`}
+            onClick={() => setShowSnackOptions(!showSnackOptions)}
+          >
+            <span className="time-icon">🍎</span>
+            <span>Snack ▾</span>
+          </button>
+          
+          {showSnackOptions && (
+            <div className="snack-sub-options">
+              <button className="snack-option" onClick={() => onConfirm('Morning snack')}>Morning</button>
+              <button className="snack-option" onClick={() => onConfirm('Afternoon snack')}>Afternoon</button>
+              <button className="snack-option" onClick={() => onConfirm('Evening snack')}>Evening</button>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      <style>{`
+        .time-options {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .time-option-btn {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 18px 20px;
+          background: #FFFFFF;
+          border: 2px solid #E8E4DD;
+          border-radius: 14px;
+          font-size: 16px;
+          color: #2D2A26;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .time-option-btn:hover, .time-option-btn.active {
+          border-color: #E07A3E;
+          background: #FDF9F5;
+        }
+        .time-icon {
+          font-size: 22px;
+        }
+        .snack-sub-options {
+          display: flex;
+          gap: 10px;
+          padding-left: 40px;
+        }
+        .snack-option {
+          flex: 1;
+          padding: 12px;
+          background: #F5F2ED;
+          border: none;
+          border-radius: 10px;
+          font-size: 14px;
+          color: #5C5852;
+          cursor: pointer;
+        }
+        .snack-option:hover {
+          background: #E07A3E;
+          color: white;
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// ============================================
 // CREATE SAVED MEAL SCREEN
 // ============================================
 const CreateSavedMealScreen = ({ onSave, onBack, existingMeal = null }) => {
@@ -4745,105 +4846,17 @@ function App() {
   }
   
   if (currentScreen === 'routineTimePicker') {
-    const [showSnackOptions, setShowSnackOptions] = React.useState(false);
-    
     return (
       <div className="app-container">
         <style>{sharedStyles}</style>
-        <div className="screen">
-          <div className="top-bar">
-            <button className="back-button" onClick={() => {
-              setPendingRoutine(null);
-              setCurrentScreen('routines');
-            }}>←</button>
-            <span className="top-bar-title">Log Saved Meal</span>
-            <div style={{ width: 40 }}></div>
-          </div>
-          
-          <div className="screen-content">
-            <div className="screen-header animate-in">
-              <h1 className="screen-title">When did you feed this?</h1>
-              <p className="screen-subtitle">{pendingRoutine?.name}</p>
-            </div>
-            
-            <div className="time-options animate-in delay-1">
-              <button className="time-option-btn" onClick={() => confirmRoutineWithTime('Breakfast')}>
-                <span className="time-icon">🌅</span>
-                <span>Breakfast</span>
-              </button>
-              <button className="time-option-btn" onClick={() => confirmRoutineWithTime('Lunch')}>
-                <span className="time-icon">☀️</span>
-                <span>Lunch</span>
-              </button>
-              <button className="time-option-btn" onClick={() => confirmRoutineWithTime('Dinner')}>
-                <span className="time-icon">🌙</span>
-                <span>Dinner</span>
-              </button>
-              <button 
-                className={`time-option-btn ${showSnackOptions ? 'active' : ''}`}
-                onClick={() => setShowSnackOptions(!showSnackOptions)}
-              >
-                <span className="time-icon">🍎</span>
-                <span>Snack ▾</span>
-              </button>
-              
-              {showSnackOptions && (
-                <div className="snack-sub-options">
-                  <button className="snack-option" onClick={() => confirmRoutineWithTime('Morning snack')}>Morning</button>
-                  <button className="snack-option" onClick={() => confirmRoutineWithTime('Afternoon snack')}>Afternoon</button>
-                  <button className="snack-option" onClick={() => confirmRoutineWithTime('Evening snack')}>Evening</button>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <style>{`
-            .time-options {
-              display: flex;
-              flex-direction: column;
-              gap: 12px;
-            }
-            .time-option-btn {
-              display: flex;
-              align-items: center;
-              gap: 14px;
-              padding: 18px 20px;
-              background: #FFFFFF;
-              border: 2px solid #E8E4DD;
-              border-radius: 14px;
-              font-size: 16px;
-              color: #2D2A26;
-              cursor: pointer;
-              transition: all 0.2s;
-            }
-            .time-option-btn:hover, .time-option-btn.active {
-              border-color: #E07A3E;
-              background: #FDF9F5;
-            }
-            .time-icon {
-              font-size: 22px;
-            }
-            .snack-sub-options {
-              display: flex;
-              gap: 10px;
-              padding-left: 40px;
-            }
-            .snack-option {
-              flex: 1;
-              padding: 12px;
-              background: #F5F2ED;
-              border: none;
-              border-radius: 10px;
-              font-size: 14px;
-              color: #5C5852;
-              cursor: pointer;
-            }
-            .snack-option:hover {
-              background: #E07A3E;
-              color: white;
-            }
-          `}</style>
-        </div>
+        <RoutineTimePickerScreen 
+          routine={pendingRoutine}
+          onConfirm={confirmRoutineWithTime}
+          onBack={() => {
+            setPendingRoutine(null);
+            setCurrentScreen('routines');
+          }}
+        />
       </div>
     );
   }

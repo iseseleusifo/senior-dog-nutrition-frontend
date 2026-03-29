@@ -3513,6 +3513,7 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
             brand: p.brand,
             name: p.name,
             type: p.type || 'product',
+            category: p.category || 'dry_food',
             display: p.display || (p.brand ? `${p.brand} ${p.name}` : p.name),
             cal: p.subtitle || (p.kcal_per_serving ? `${Math.round(p.kcal_per_serving)} kcal/${p.serving_unit || 'serving'}` : ''),
             kcal_per_serving: p.kcal_per_serving,
@@ -3603,19 +3604,80 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
 };
 
 const AmountScreen = ({ product, onSave, onBack }) => {
+  // Derive units based on product type/category
+  const getUnitsForProduct = (prod) => {
+    const category = prod.category || '';
+    const type = prod.type || '';
+    const servingUnit = prod.serving_unit || '';
+    const name = (prod.name || '').toLowerCase();
+    
+    // Ingredients (type === 'ingredient')
+    if (type === 'ingredient') {
+      // Vegetables
+      if (['carrot', 'broccoli', 'green bean', 'pea', 'sweet potato', 'pumpkin', 'spinach', 'zucchini', 'celery', 'cucumber', 'apple', 'blueberr', 'banana', 'watermelon'].some(v => name.includes(v))) {
+        return ['piece', 'cup', 'tbsp'];
+      }
+      // Meats/proteins
+      if (['chicken', 'beef', 'turkey', 'salmon', 'fish', 'egg', 'liver', 'lamb', 'pork', 'sardine', 'tuna'].some(v => name.includes(v))) {
+        return ['oz', 'g', 'tbsp'];
+      }
+      // Dairy
+      if (['cheese', 'yogurt', 'cottage'].some(v => name.includes(v))) {
+        return ['tbsp', 'oz', 'cup'];
+      }
+      // Grains/carbs
+      if (['rice', 'oatmeal', 'pasta', 'potato', 'bread'].some(v => name.includes(v))) {
+        return ['cup', '½ cup', 'tbsp'];
+      }
+      // Oils/liquids
+      if (['oil', 'broth', 'water'].some(v => name.includes(v))) {
+        return ['tsp', 'tbsp', 'cup'];
+      }
+      // Default ingredient
+      return ['oz', 'tbsp', 'piece'];
+    }
+    
+    // Commercial products by category
+    if (category === 'wet_food') {
+      return ['can', '½ can', 'oz'];
+    }
+    if (category === 'treat') {
+      return ['piece', 'pieces'];
+    }
+    if (category === 'supplement') {
+      return ['pump', 'scoop', 'tablet', 'chew'];
+    }
+    if (category === 'dental_chew') {
+      return ['piece'];
+    }
+    
+    // Dry food (default) - use serving_unit from DB if available
+    if (servingUnit === 'g') {
+      return ['g', '50g', '100g'];
+    }
+    return ['cup', '½ cup', '¼ cup'];
+  };
+  
+  const units = getUnitsForProduct(product);
   const [amount, setAmount] = useState('1');
-  const [unit, setUnit] = useState('cup');
+  const [unit, setUnit] = useState(units[0]);
   const [timeOption, setTimeOption] = useState('breakfast');
   const [showSnackOptions, setShowSnackOptions] = useState(false);
-  
-  const units = ['cup', '½ cup', 'scoop', 'can'];
   
   // Parse calories from product
   const baseCalories = product.kcal_per_serving || 
     (product.cal ? parseInt(product.cal.match(/\d+/)?.[0] || 0) : 380);
   
-  // Adjust for unit
-  const unitMultiplier = unit === '½ cup' ? 0.5 : 1;
+  // Adjust for unit (fractional units)
+  const getUnitMultiplier = (u) => {
+    if (u === '½ cup' || u === '½ can') return 0.5;
+    if (u === '¼ cup') return 0.25;
+    if (u === '50g') return 0.5;
+    if (u === '100g') return 1;
+    if (u === 'pieces') return 1; // "pieces" is just label, amount handles count
+    return 1;
+  };
+  const unitMultiplier = getUnitMultiplier(unit);
   const estimatedCal = Math.round(parseFloat(amount || 0) * baseCalories * unitMultiplier);
   
   const handleTimeSelect = (option) => {
@@ -3646,12 +3708,21 @@ const AmountScreen = ({ product, onSave, onBack }) => {
   
   const isSnackSelected = ['morning-snack', 'afternoon-snack', 'evening-snack'].includes(timeOption);
   
+  // Normalize compound units to base unit for storage
+  const getNormalizedUnit = (u) => {
+    if (u === '½ cup' || u === '¼ cup') return 'cup';
+    if (u === '½ can') return 'can';
+    if (u === '50g' || u === '100g') return 'g';
+    if (u === 'pieces') return 'piece';
+    return u;
+  };
+  
   const handleSave = () => {
     onSave({
       name: product.name,
       brand: product.brand,
       amount: parseFloat(amount) * unitMultiplier,
-      unit: unit === '½ cup' ? 'cup' : unit,
+      unit: getNormalizedUnit(unit),
       calories: estimatedCal,
       nutrients: product.guaranteed_analysis || {},
       confidence: 'high',

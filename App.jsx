@@ -2365,10 +2365,7 @@ const ProfileSettingsScreen = ({ profile, onBack, onUpdateProfile }) => {
 // ============================================
 // ROUTINES SCREEN
 // ============================================
-const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
-  // Start with empty routines - user creates their own
-  const [routines, setRoutines] = useState([]);
-  
+const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine, savedMeals = [] }) => {
   return (
     <div className="screen">
       <div className="top-bar">
@@ -2383,7 +2380,7 @@ const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
           <p className="screen-subtitle">Log multiple items with one tap</p>
         </div>
         
-        {routines.length === 0 ? (
+        {savedMeals.length === 0 ? (
           <div className="empty-routines animate-in delay-1">
             <div className="empty-icon">📋</div>
             <h3 className="empty-title">No saved meals yet</h3>
@@ -2411,7 +2408,7 @@ const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
         ) : (
           <>
             <div className="routines-list">
-              {routines.map((routine, i) => (
+              {savedMeals.map((routine, i) => (
                 <div key={routine.id} className={`routine-card animate-in delay-${Math.min(i + 1, 4)}`}>
                   <div className="routine-header">
                     <h3 className="routine-name">{routine.name}</h3>
@@ -2663,6 +2660,397 @@ const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
           font-size: 14px;
           color: #5C5852;
           line-height: 1.5;
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// ============================================
+// CREATE SAVED MEAL SCREEN
+// ============================================
+const CreateSavedMealScreen = ({ onSave, onBack, existingMeal = null }) => {
+  const [name, setName] = useState(existingMeal?.name || '');
+  const [items, setItems] = useState(existingMeal?.items || []);
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  
+  const API_BASE = 'https://senior-dog-nutrition.vercel.app/api';
+  
+  const searchProducts = async (query) => {
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    setIsSearching(true);
+    try {
+      const res = await fetch(`${API_BASE}/products?q=${encodeURIComponent(query)}&limit=10`);
+      const data = await res.json();
+      setSearchResults(data.products || []);
+    } catch (e) {
+      console.error('Search error:', e);
+      setSearchResults([]);
+    }
+    setIsSearching(false);
+  };
+  
+  useEffect(() => {
+    const timer = setTimeout(() => searchProducts(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+  
+  const addItem = (product) => {
+    const newItem = {
+      id: Date.now(),
+      name: product.name,
+      productId: product.id,
+      type: product.source === 'ingredient' ? 'extra' : 'meal',
+      amount: '1 serving',
+      calories: product.calories_per_serving || 0,
+      nutrients: product.nutrients || {}
+    };
+    setItems([...items, newItem]);
+    setShowAddItem(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+  
+  const removeItem = (itemId) => {
+    setItems(items.filter(i => i.id !== itemId));
+  };
+  
+  const totalCalories = items.reduce((sum, i) => sum + (i.calories || 0), 0);
+  
+  const handleSave = () => {
+    if (!name.trim() || items.length === 0) return;
+    const savedMeal = {
+      id: existingMeal?.id || Date.now(),
+      name: name.trim(),
+      items,
+      totalCal: totalCalories,
+      usedCount: existingMeal?.usedCount || 0,
+      createdAt: existingMeal?.createdAt || new Date().toISOString()
+    };
+    onSave(savedMeal);
+  };
+  
+  const canSave = name.trim() && items.length > 0;
+  
+  return (
+    <div className="screen">
+      <div className="top-bar">
+        <button className="back-button" onClick={onBack}>←</button>
+        <span className="top-bar-title">{existingMeal ? 'Edit Saved Meal' : 'Create Saved Meal'}</span>
+        <div style={{ width: 40 }}></div>
+      </div>
+      
+      <div className="screen-content">
+        <div className="create-meal-form animate-in">
+          <label className="form-label">Meal name</label>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="e.g., Morning meal, Evening routine"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        
+        <div className="meal-items-section animate-in delay-1">
+          <div className="section-header">
+            <span className="section-title">Items ({items.length})</span>
+            {totalCalories > 0 && (
+              <span className="section-cal">{totalCalories} kcal total</span>
+            )}
+          </div>
+          
+          {items.length === 0 ? (
+            <div className="empty-items">
+              <p>No items added yet</p>
+            </div>
+          ) : (
+            <div className="meal-items-list">
+              {items.map((item) => (
+                <div key={item.id} className="meal-item-row">
+                  <div className="meal-item-info">
+                    <span className="meal-item-name">{item.name}</span>
+                    <span className="meal-item-cal">{item.calories} kcal</span>
+                  </div>
+                  <button className="remove-item-btn" onClick={() => removeItem(item.id)}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {!showAddItem ? (
+            <button className="add-item-button" onClick={() => setShowAddItem(true)}>
+              <span className="add-icon">+</span>
+              <span>Add item</span>
+            </button>
+          ) : (
+            <div className="add-item-search">
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search products or ingredients..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+              {isSearching && <div className="search-loading">Searching...</div>}
+              {searchResults.length > 0 && (
+                <div className="search-results-list">
+                  {searchResults.map((product) => (
+                    <button
+                      key={product.id}
+                      className="search-result-item"
+                      onClick={() => addItem(product)}
+                    >
+                      <span className="result-name">{product.name}</span>
+                      <span className="result-meta">
+                        {product.source === 'ingredient' ? 'Ingredient' : product.brand}
+                        {product.calories_per_serving && ` · ${product.calories_per_serving} kcal`}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button className="cancel-search" onClick={() => {
+                setShowAddItem(false);
+                setSearchQuery('');
+                setSearchResults([]);
+              }}>Cancel</button>
+            </div>
+          )}
+        </div>
+        
+        <button 
+          className={`primary-button save-meal-btn animate-in delay-2 ${!canSave ? 'disabled' : ''}`}
+          onClick={handleSave}
+          disabled={!canSave}
+        >
+          {existingMeal ? 'Save Changes' : 'Create Saved Meal'}
+        </button>
+      </div>
+      
+      <style>{`
+        .create-meal-form {
+          margin-bottom: 24px;
+        }
+        
+        .form-label {
+          display: block;
+          font-size: 14px;
+          font-weight: 500;
+          color: #5C5852;
+          margin-bottom: 8px;
+        }
+        
+        .form-input {
+          width: 100%;
+          padding: 14px 16px;
+          font-size: 16px;
+          border: 1.5px solid #E8E4DD;
+          border-radius: 12px;
+          background: #FFFFFF;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        
+        .form-input:focus {
+          border-color: #E07A3E;
+        }
+        
+        .meal-items-section {
+          background: #FFFFFF;
+          border-radius: 16px;
+          padding: 18px;
+          box-shadow: 0 2px 10px rgba(61, 58, 54, 0.07);
+          margin-bottom: 24px;
+        }
+        
+        .section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+        
+        .section-title {
+          font-weight: 600;
+          color: #2D2A26;
+        }
+        
+        .section-cal {
+          font-size: 13px;
+          color: #7A756E;
+          background: #F5F2ED;
+          padding: 4px 10px;
+          border-radius: 8px;
+        }
+        
+        .empty-items {
+          text-align: center;
+          padding: 24px;
+          color: #9B9590;
+          font-size: 14px;
+        }
+        
+        .meal-items-list {
+          border-bottom: 1px solid #F5F2ED;
+          margin-bottom: 16px;
+        }
+        
+        .meal-item-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 0;
+          border-top: 1px solid #F5F2ED;
+        }
+        
+        .meal-item-info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        
+        .meal-item-name {
+          font-size: 15px;
+          color: #2D2A26;
+        }
+        
+        .meal-item-cal {
+          font-size: 13px;
+          color: #7A756E;
+        }
+        
+        .remove-item-btn {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          border: none;
+          background: #F5F2ED;
+          color: #7A756E;
+          font-size: 18px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .remove-item-btn:hover {
+          background: #FFE5E5;
+          color: #D32F2F;
+        }
+        
+        .add-item-button {
+          width: 100%;
+          padding: 14px;
+          border: 2px dashed #E8E4DD;
+          border-radius: 12px;
+          background: transparent;
+          color: #7A756E;
+          font-size: 15px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.2s;
+        }
+        
+        .add-item-button:hover {
+          border-color: #E07A3E;
+          color: #E07A3E;
+        }
+        
+        .add-icon {
+          font-size: 18px;
+          font-weight: 300;
+        }
+        
+        .add-item-search {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        
+        .search-input {
+          width: 100%;
+          padding: 12px 14px;
+          font-size: 15px;
+          border: 1.5px solid #E8E4DD;
+          border-radius: 10px;
+          outline: none;
+        }
+        
+        .search-input:focus {
+          border-color: #E07A3E;
+        }
+        
+        .search-loading {
+          font-size: 13px;
+          color: #9B9590;
+          text-align: center;
+        }
+        
+        .search-results-list {
+          max-height: 200px;
+          overflow-y: auto;
+          border: 1px solid #E8E4DD;
+          border-radius: 10px;
+        }
+        
+        .search-result-item {
+          width: 100%;
+          padding: 12px 14px;
+          border: none;
+          border-bottom: 1px solid #F5F2ED;
+          background: #FFFFFF;
+          text-align: left;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        
+        .search-result-item:last-child {
+          border-bottom: none;
+        }
+        
+        .search-result-item:hover {
+          background: #FDF9F5;
+        }
+        
+        .result-name {
+          font-size: 14px;
+          color: #2D2A26;
+        }
+        
+        .result-meta {
+          font-size: 12px;
+          color: #9B9590;
+        }
+        
+        .cancel-search {
+          padding: 10px;
+          border: none;
+          background: transparent;
+          color: #7A756E;
+          font-size: 14px;
+          cursor: pointer;
+        }
+        
+        .save-meal-btn {
+          width: 100%;
+        }
+        
+        .save-meal-btn.disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
       `}</style>
     </div>
@@ -4013,6 +4401,7 @@ function App() {
   const [selectedDay, setSelectedDay] = useState(null);
   const [todayLog, setTodayLog] = useState({ date: getTodayKey(), items: [], totalCalories: 0 });
   const [allLogs, setAllLogs] = useState({});
+  const [savedMeals, setSavedMeals] = useState([]);
   
   // Log flow state
   const [logStep, setLogStep] = useState('itemType');
@@ -4026,6 +4415,7 @@ function App() {
   useEffect(() => {
     const savedProfile = Storage.get(STORAGE_KEYS.PROFILE);
     const savedLogs = Storage.get(STORAGE_KEYS.DAILY_LOGS, {});
+    const savedMealsData = Storage.get(STORAGE_KEYS.ROUTINES, []);
     const onboardingComplete = Storage.get(STORAGE_KEYS.ONBOARDING_COMPLETE, false);
     
     if (savedProfile) {
@@ -4033,6 +4423,7 @@ function App() {
     }
     
     setAllLogs(savedLogs);
+    setSavedMeals(savedMealsData);
     
     const today = getTodayKey();
     if (savedLogs[today]) {
@@ -4060,6 +4451,23 @@ function App() {
       Storage.set(STORAGE_KEYS.DAILY_LOGS, allLogs);
     }
   }, [allLogs]);
+  
+  // Save saved meals whenever they change
+  useEffect(() => {
+    Storage.set(STORAGE_KEYS.ROUTINES, savedMeals);
+  }, [savedMeals]);
+  
+  const handleSaveMeal = (meal) => {
+    const existingIndex = savedMeals.findIndex(m => m.id === meal.id);
+    if (existingIndex >= 0) {
+      const updated = [...savedMeals];
+      updated[existingIndex] = meal;
+      setSavedMeals(updated);
+    } else {
+      setSavedMeals([...savedMeals, meal]);
+    }
+    setCurrentScreen('routines');
+  };
   
   const resetLogFlow = () => {
     setLogStep('itemType');
@@ -4299,12 +4707,25 @@ function App() {
         <RoutinesScreen 
           onBack={() => setCurrentScreen('home')}
           onUseRoutine={handleUseRoutine}
-          onCreateRoutine={() => console.log('Create routine')}
+          onCreateRoutine={() => setCurrentScreen('createSavedMeal')}
+          savedMeals={savedMeals}
         />
         <BottomNav 
           activeTab="routines"
           onNavigate={setCurrentScreen}
           onLogItem={handleLogItem}
+        />
+      </div>
+    );
+  }
+  
+  if (currentScreen === 'createSavedMeal') {
+    return (
+      <div className="app-container">
+        <style>{sharedStyles}</style>
+        <CreateSavedMealScreen 
+          onSave={handleSaveMeal}
+          onBack={() => setCurrentScreen('routines')}
         />
       </div>
     );

@@ -892,6 +892,33 @@ const NutrientBar = ({ name, percentage, status, icon }) => {
   );
 };
 
+// Utility to convert timestamps to meal labels
+const formatTimeLabel = (time) => {
+  if (!time || time === '—') return '—';
+  
+  // Already a label (Breakfast, Lunch, etc.)
+  if (['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Morning snack', 'Afternoon snack', 'Evening snack'].includes(time)) {
+    return time;
+  }
+  
+  // Check if it's a timestamp (HH:MM format or contains AM/PM)
+  const timeMatch = time.match(/(\d{1,2}):(\d{2})/);
+  if (timeMatch) {
+    const hour = parseInt(timeMatch[1]);
+    const isPM = time.toLowerCase().includes('pm');
+    const hour24 = isPM && hour !== 12 ? hour + 12 : (!isPM && hour === 12 ? 0 : hour);
+    
+    if (hour24 >= 5 && hour24 < 11) return 'Breakfast';
+    if (hour24 >= 11 && hour24 < 14) return 'Lunch';
+    if (hour24 >= 17 && hour24 < 21) return 'Dinner';
+    if (hour24 >= 14 && hour24 < 17) return 'Afternoon snack';
+    if (hour24 >= 21 || hour24 < 5) return 'Evening snack';
+    return 'Morning snack';
+  }
+  
+  return time;
+};
+
 const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory, onViewRoutines, onViewProfile }) => {
   // Calculate real data from todayLog
   const items = todayLog?.items || [];
@@ -1001,7 +1028,7 @@ const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory,
   // Format items for display
   const displayItems = items.map(item => ({
     id: item.id,
-    time: item.time,
+    time: formatTimeLabel(item.time),
     name: item.brand ? `${item.type} · ${item.brand} ${item.name}` : `${item.type} · ${item.name}`,
     calories: item.calories
   }));
@@ -1700,7 +1727,7 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem, canEdit = true }
   // Use real items from day data
   const entries = (day.items || []).map(item => ({
     id: item.id,
-    time: item.time || '—',
+    time: formatTimeLabel(item.time),
     type: item.type || 'Item',
     name: item.name || 'Unknown',
     amount: item.amount ? `${item.amount} ${item.unit || ''}` : '',
@@ -3800,13 +3827,37 @@ const AmountScreen = ({ product, onSave, onBack }) => {
     
     // Ingredients (type === 'ingredient')
     if (type === 'ingredient') {
-      // Vegetables
-      if (['carrot', 'broccoli', 'green bean', 'pea', 'sweet potato', 'pumpkin', 'spinach', 'zucchini', 'celery', 'cucumber', 'apple', 'blueberr', 'banana', 'watermelon'].some(v => name.includes(v))) {
-        return ['piece', 'cup', 'tbsp'];
+      // Eggs - special case
+      if (name.includes('egg')) {
+        return ['piece', 'whole'];
       }
-      // Meats/proteins
-      if (['chicken', 'beef', 'turkey', 'salmon', 'fish', 'egg', 'liver', 'lamb', 'pork', 'sardine', 'tuna'].some(v => name.includes(v))) {
-        return ['oz', 'g', 'tbsp'];
+      // Canned fish
+      if (['sardine', 'canned tuna', 'canned salmon'].some(v => name.includes(v))) {
+        return ['can', 'oz', 'g'];
+      }
+      // Fish fillets
+      if (['salmon', 'tuna', 'fish', 'cod', 'tilapia'].some(v => name.includes(v))) {
+        return ['oz', 'g', 'fillet'];
+      }
+      // Ground meats
+      if (['ground beef', 'ground turkey', 'ground lamb', 'ground pork'].some(v => name.includes(v))) {
+        return ['oz', 'g', 'cup'];
+      }
+      // Solid meats/proteins
+      if (['chicken', 'beef', 'turkey', 'liver', 'lamb', 'pork'].some(v => name.includes(v))) {
+        return ['oz', 'g', 'piece'];
+      }
+      // Vegetables - whole pieces
+      if (['carrot', 'apple', 'banana', 'celery', 'cucumber'].some(v => name.includes(v))) {
+        return ['piece', 'slice', 'cup'];
+      }
+      // Vegetables - measured by volume
+      if (['broccoli', 'green bean', 'pea', 'spinach', 'zucchini', 'blueberr', 'watermelon'].some(v => name.includes(v))) {
+        return ['cup', '½ cup', 'piece'];
+      }
+      // Purees/mashes
+      if (['pumpkin', 'sweet potato', 'puree', 'mash'].some(v => name.includes(v))) {
+        return ['cup', '½ cup', 'tbsp'];
       }
       // Dairy
       if (['cheese', 'yogurt', 'cottage'].some(v => name.includes(v))) {
@@ -3820,8 +3871,12 @@ const AmountScreen = ({ product, onSave, onBack }) => {
       if (['oil', 'broth', 'water'].some(v => name.includes(v))) {
         return ['tsp', 'tbsp', 'cup'];
       }
+      // Nut butters
+      if (['peanut butter', 'almond butter'].some(v => name.includes(v))) {
+        return ['tsp', 'tbsp'];
+      }
       // Default ingredient
-      return ['oz', 'tbsp', 'piece'];
+      return ['oz', 'piece', 'cup'];
     }
     
     // Commercial products by category
@@ -5142,7 +5197,7 @@ function App() {
   if (currentScreen === 'dayDetail') {
     // Check if day is within editable window (last 7 days)
     const today = new Date();
-    const dayDate = new Date(selectedDay.date);
+    const dayDate = new Date(selectedDay.dateKey); // Use dateKey, not formatted date
     const diffDays = Math.floor((today - dayDate) / (1000 * 60 * 60 * 24));
     const canEdit = diffDays <= 7;
     

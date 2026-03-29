@@ -917,12 +917,10 @@ const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory,
     
     // Sum nutrients from all items
     const totals = { protein: 0, fat: 0, fiber: 0, omega3: 0, calcium: 0 };
-    let hasNutrientData = false;
     
     items.forEach(item => {
       // Check if item has actual nutrient data
       if (item.nutrients && (item.nutrients.protein || item.nutrients.fat)) {
-        hasNutrientData = true;
         totals.protein += item.nutrients.protein || 0;
         totals.fat += item.nutrients.fat || 0;
         totals.fiber += item.nutrients.fiber || 0;
@@ -930,29 +928,29 @@ const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory,
         totals.calcium += item.nutrients.calcium || 0;
       } else if (item.calories > 0) {
         // Estimate nutrients from calories (typical senior dog food ratios)
-        // Protein: ~25% of calories = ~6.25g per 100kcal
-        // Fat: ~15% of calories = ~1.67g per 100kcal  
-        // Fiber: ~3% by weight
         const calFactor = item.calories / 100;
         totals.protein += 6.25 * calFactor;
         totals.fat += 1.67 * calFactor;
         totals.fiber += 0.5 * calFactor;
         totals.calcium += 0.03 * calFactor;
-        // Omega-3 only if explicitly noted or supplement
-        if (item.type === 'Supplement' || (item.name && item.name.toLowerCase().includes('fish'))) {
+        // Omega-3 only if supplement or fish
+        if (item.type === 'supplement' || (item.name && item.name.toLowerCase().includes('fish'))) {
           totals.omega3 += 0.05 * calFactor;
         }
       }
     });
     
-    // AAFCO senior targets (per 1000 kcal, scaled to actual calories)
-    const scaleFactor = totalCalories > 0 ? totalCalories / 1000 : 1;
+    // Daily targets based on dog's daily calorie needs (not what they've eaten)
+    // Use the calculated daily calorie target, not totalCalories consumed
+    const dailyCalorieTarget = (calorieMin + calorieMax) / 2;
+    const scaleFactor = dailyCalorieTarget / 1000;
+    
     const targets = {
-      protein: 56.3 * scaleFactor,
-      fat: 13.8 * scaleFactor,
-      fiber: 5 * scaleFactor,
-      omega3: 0.11 * scaleFactor, // 110mg = 0.11g per 1000kcal
-      calcium: 1.25 * scaleFactor
+      protein: 56.3 * scaleFactor,  // ~45g for 800kcal dog
+      fat: 13.8 * scaleFactor,       // ~11g for 800kcal dog
+      fiber: 5 * scaleFactor,        // ~4g for 800kcal dog
+      omega3: 0.11 * scaleFactor,    // ~88mg for 800kcal dog
+      calcium: 1.25 * scaleFactor    // ~1g for 800kcal dog
     };
     
     const getStatus = (pct) => {
@@ -1735,13 +1733,16 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
         totals.fat += 1.67 * calFactor;
         totals.fiber += 0.5 * calFactor;
         totals.calcium += 0.03 * calFactor;
-        if (item.type === 'Supplement' || (item.name && item.name.toLowerCase().includes('fish'))) {
+        if (item.type === 'supplement' || (item.name && item.name.toLowerCase().includes('fish'))) {
           totals.omega3 += 0.05 * calFactor;
         }
       }
     });
     
-    const scaleFactor = totalCal > 0 ? totalCal / 1000 : 1;
+    // Use fixed daily target of ~800 kcal for a typical senior dog
+    // This gives consistent percentages regardless of how much logged
+    const dailyTarget = 800;
+    const scaleFactor = dailyTarget / 1000;
     const targets = {
       protein: 56.3 * scaleFactor,
       fat: 13.8 * scaleFactor,
@@ -2383,37 +2384,8 @@ const ProfileSettingsScreen = ({ profile, onBack, onUpdateProfile }) => {
 // ROUTINES SCREEN
 // ============================================
 const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
-  const [routines, setRoutines] = useState([
-    { 
-      id: 1, 
-      name: 'Morning routine', 
-      items: [
-        { type: 'Meal', name: 'Senior kibble', amount: '1.5 cups' },
-        { type: 'Supplement', name: 'Fish oil', amount: '1 pump' }
-      ],
-      totalCal: 585,
-      usedCount: 12
-    },
-    { 
-      id: 2, 
-      name: 'Evening routine', 
-      items: [
-        { type: 'Meal', name: 'Senior kibble', amount: '1 cup' },
-        { type: 'Supplement', name: 'Joint chew', amount: '1 piece' }
-      ],
-      totalCal: 420,
-      usedCount: 8
-    },
-    { 
-      id: 3, 
-      name: 'Training day', 
-      items: [
-        { type: 'Treat', name: 'Training biscuits', amount: '10 pieces' }
-      ],
-      totalCal: 150,
-      usedCount: 3
-    },
-  ]);
+  // Start with empty routines - user creates their own
+  const [routines, setRoutines] = useState([]);
   
   return (
     <div className="screen">
@@ -2429,49 +2401,132 @@ const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
           <p className="screen-subtitle">Log multiple items with one tap</p>
         </div>
         
-        <div className="routines-list">
-          {routines.map((routine, i) => (
-            <div key={routine.id} className={`routine-card animate-in delay-${Math.min(i + 1, 4)}`}>
-              <div className="routine-header">
-                <h3 className="routine-name">{routine.name}</h3>
-                <span className="routine-cal">{routine.totalCal} kcal</span>
+        {routines.length === 0 ? (
+          <div className="empty-routines animate-in delay-1">
+            <div className="empty-icon">📋</div>
+            <h3 className="empty-title">No routines yet</h3>
+            <p className="empty-desc">
+              Create a routine for meals you feed regularly. For example:
+            </p>
+            <div className="example-routines">
+              <div className="example-routine">
+                <span className="example-name">🌅 Morning routine</span>
+                <span className="example-items">Kibble + fish oil</span>
               </div>
-              
-              <div className="routine-items">
-                {routine.items.map((item, j) => (
-                  <div key={j} className="routine-item">
-                    <span className="routine-item-type">{item.type}</span>
-                    <span className="routine-item-name">{item.name}</span>
-                    <span className="routine-item-amount">{item.amount}</span>
-                  </div>
-                ))}
+              <div className="example-routine">
+                <span className="example-name">🌙 Evening routine</span>
+                <span className="example-items">Kibble + joint chew</span>
               </div>
-              
-              <div className="routine-footer">
-                <span className="routine-used">Used {routine.usedCount} times</span>
-                <div className="routine-actions">
-                  <button className="routine-edit">Edit</button>
-                  <button className="routine-use" onClick={() => onUseRoutine(routine)}>
-                    Use now
-                  </button>
-                </div>
+              <div className="example-routine">
+                <span className="example-name">🎾 Training day</span>
+                <span className="example-items">Extra treats</span>
               </div>
             </div>
-          ))}
-        </div>
-        
-        <button className="create-routine-button animate-in delay-5" onClick={onCreateRoutine}>
-          <span className="create-icon">+</span>
-          <span>Create new routine</span>
-        </button>
+            <button className="primary-button" onClick={onCreateRoutine}>
+              Create your first routine
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="routines-list">
+              {routines.map((routine, i) => (
+                <div key={routine.id} className={`routine-card animate-in delay-${Math.min(i + 1, 4)}`}>
+                  <div className="routine-header">
+                    <h3 className="routine-name">{routine.name}</h3>
+                    <span className="routine-cal">{routine.totalCal} kcal</span>
+                  </div>
+                  
+                  <div className="routine-items">
+                    {routine.items.map((item, j) => (
+                      <div key={j} className="routine-item">
+                        <span className="routine-item-type">{item.type}</span>
+                        <span className="routine-item-name">{item.name}</span>
+                        <span className="routine-item-amount">{item.amount}</span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="routine-footer">
+                    <span className="routine-used">Used {routine.usedCount} times</span>
+                    <div className="routine-actions">
+                      <button className="routine-edit">Edit</button>
+                      <button className="routine-use" onClick={() => onUseRoutine(routine)}>
+                        Use now
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <button className="create-routine-button animate-in delay-5" onClick={onCreateRoutine}>
+              <span className="create-icon">+</span>
+              <span>Create new routine</span>
+            </button>
+          </>
+        )}
         
         <div className="routine-tip animate-in delay-5">
           <span className="tip-icon">💡</span>
-          <p className="tip-text">Routines save time when you feed the same things regularly. Create one for breakfast, dinner, or training days.</p>
+          <p className="tip-text">Routines save time when you feed the same things regularly. One tap logs everything at once.</p>
         </div>
       </div>
       
       <style>{`
+        .empty-routines {
+          text-align: center;
+          padding: 20px 0 30px;
+        }
+        
+        .empty-icon {
+          font-size: 48px;
+          margin-bottom: 16px;
+        }
+        
+        .empty-title {
+          font-family: 'Fraunces', Georgia, serif;
+          font-size: 20px;
+          font-weight: 500;
+          color: #2D2A26;
+          margin-bottom: 8px;
+        }
+        
+        .empty-desc {
+          font-size: 14px;
+          color: #7A756E;
+          margin-bottom: 20px;
+        }
+        
+        .example-routines {
+          background: #F5F2ED;
+          border-radius: 12px;
+          padding: 16px;
+          margin-bottom: 24px;
+          text-align: left;
+        }
+        
+        .example-routine {
+          display: flex;
+          justify-content: space-between;
+          padding: 10px 0;
+          border-bottom: 1px solid #E8E4DC;
+        }
+        
+        .example-routine:last-child {
+          border-bottom: none;
+        }
+        
+        .example-name {
+          font-size: 14px;
+          font-weight: 500;
+          color: #3D3A36;
+        }
+        
+        .example-items {
+          font-size: 13px;
+          color: #9A958E;
+        }
+        
         .routines-list {
           display: flex;
           flex-direction: column;

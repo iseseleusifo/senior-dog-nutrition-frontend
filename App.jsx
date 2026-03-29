@@ -1102,7 +1102,7 @@ const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory,
             {displayItems.slice(0, 5).map((item, i) => (
               <div key={item.id || i} className="logged-item">
                 <span className="logged-time">{item.time}</span>
-                <span className="logged-name">{item.type ? item.type.charAt(0).toUpperCase() + item.type.slice(1).toLowerCase() + ': ' : ''}{item.name}</span>
+                <span className="logged-name">{item.type ? item.type.charAt(0).toUpperCase() + item.type.slice(1).toLowerCase() + ' · ' : ''}{item.name}</span>
                 {item.calories > 0 && <span className="logged-cal">{item.calories} kcal</span>}
                 <button 
                   className="delete-btn"
@@ -2386,7 +2386,7 @@ const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
         {routines.length === 0 ? (
           <div className="empty-routines animate-in delay-1">
             <div className="empty-icon">📋</div>
-            <h3 className="empty-title">No routines yet</h3>
+            <h3 className="empty-title">No saved meals yet</h3>
             <p className="empty-desc">
               Create a saved meal for combinations you feed regularly. For example:
             </p>
@@ -2450,7 +2450,7 @@ const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
         
         <div className="routine-tip animate-in delay-5">
           <span className="tip-icon">💡</span>
-          <p className="tip-text">Routines save time when you feed the same things regularly. One tap logs everything at once.</p>
+          <p className="tip-text">Saved meals save time when you feed the same things regularly. One tap logs everything at once.</p>
         </div>
       </div>
       
@@ -3117,6 +3117,7 @@ const AmountScreen = ({ product, onSave, onBack }) => {
   const [amount, setAmount] = useState('1');
   const [unit, setUnit] = useState('cup');
   const [timeOption, setTimeOption] = useState('breakfast');
+  const [showSnackOptions, setShowSnackOptions] = useState(false);
   
   const units = ['cup', '½ cup', 'scoop', 'can'];
   
@@ -3128,16 +3129,33 @@ const AmountScreen = ({ product, onSave, onBack }) => {
   const unitMultiplier = unit === '½ cup' ? 0.5 : 1;
   const estimatedCal = Math.round(parseFloat(amount || 0) * baseCalories * unitMultiplier);
   
+  const handleTimeSelect = (option) => {
+    if (option === 'snack') {
+      setShowSnackOptions(true);
+    } else {
+      setTimeOption(option);
+      setShowSnackOptions(false);
+    }
+  };
+  
+  const handleSnackSelect = (snackType) => {
+    setTimeOption(snackType);
+    setShowSnackOptions(false);
+  };
+  
   const getTimeString = () => {
-    // Return meal label directly - matches what user selected
     switch(timeOption) {
       case 'breakfast': return 'Breakfast';
       case 'lunch': return 'Lunch';
       case 'dinner': return 'Dinner';
-      case 'snack': return 'Snack';
+      case 'morning-snack': return 'Morning snack';
+      case 'afternoon-snack': return 'Afternoon snack';
+      case 'evening-snack': return 'Evening snack';
       default: return 'Snack';
     }
   };
+  
+  const isSnackSelected = ['morning-snack', 'afternoon-snack', 'evening-snack'].includes(timeOption);
   
   const handleSave = () => {
     onSave({
@@ -3201,21 +3219,42 @@ const AmountScreen = ({ product, onSave, onBack }) => {
           <div className="time-options">
             <button 
               className={`time-btn ${timeOption === 'breakfast' ? 'active' : ''}`}
-              onClick={() => setTimeOption('breakfast')}
+              onClick={() => handleTimeSelect('breakfast')}
             >Breakfast</button>
             <button 
               className={`time-btn ${timeOption === 'lunch' ? 'active' : ''}`}
-              onClick={() => setTimeOption('lunch')}
+              onClick={() => handleTimeSelect('lunch')}
             >Lunch</button>
             <button 
               className={`time-btn ${timeOption === 'dinner' ? 'active' : ''}`}
-              onClick={() => setTimeOption('dinner')}
+              onClick={() => handleTimeSelect('dinner')}
             >Dinner</button>
             <button 
-              className={`time-btn ${timeOption === 'snack' ? 'active' : ''}`}
-              onClick={() => setTimeOption('snack')}
-            >Snack</button>
+              className={`time-btn ${isSnackSelected || showSnackOptions ? 'active' : ''}`}
+              onClick={() => handleTimeSelect('snack')}
+            >Snack ▾</button>
           </div>
+          {showSnackOptions && (
+            <div className="snack-sub-options">
+              <button 
+                className={`time-btn sub ${timeOption === 'morning-snack' ? 'active' : ''}`}
+                onClick={() => handleSnackSelect('morning-snack')}
+              >Morning</button>
+              <button 
+                className={`time-btn sub ${timeOption === 'afternoon-snack' ? 'active' : ''}`}
+                onClick={() => handleSnackSelect('afternoon-snack')}
+              >Afternoon</button>
+              <button 
+                className={`time-btn sub ${timeOption === 'evening-snack' ? 'active' : ''}`}
+                onClick={() => handleSnackSelect('evening-snack')}
+              >Evening</button>
+            </div>
+          )}
+          {isSnackSelected && !showSnackOptions && (
+            <div className="selected-snack-label">
+              {getTimeString()}
+            </div>
+          )}
         </div>
         
         <button className="primary-button animate-in delay-4" onClick={handleSave}>
@@ -3797,7 +3836,7 @@ const logStyles = `
     color: #2D2A26;
   }
   
-  .time-options { display: flex; gap: 10px; }
+  .time-options { display: flex; gap: 10px; flex-wrap: wrap; }
   .time-btn {
     padding: 10px 16px;
     font-size: 14px;
@@ -3811,6 +3850,23 @@ const logStyles = `
   .time-btn.active {
     border-color: #2D5A3D;
     background: rgba(45, 90, 61, 0.08);
+    color: #2D5A3D;
+    font-weight: 500;
+  }
+  .snack-sub-options {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    padding-left: 4px;
+  }
+  .time-btn.sub {
+    padding: 8px 14px;
+    font-size: 13px;
+    border-width: 1px;
+  }
+  .selected-snack-label {
+    margin-top: 8px;
+    font-size: 13px;
     color: #2D5A3D;
     font-weight: 500;
   }
@@ -4030,8 +4086,7 @@ function App() {
   };
   
   const handleLogComplete = (logData) => {
-    const now = new Date();
-    const defaultTime = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+    const defaultTime = 'Snack'; // Default to Snack if no time specified
     const today = getTodayKey();
     
     // Create the new item with full nutrient data

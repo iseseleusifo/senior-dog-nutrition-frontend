@@ -77,7 +77,11 @@ const sharedStyles = `
   .screen {
     min-height: 100vh;
     background: #FAF8F3;
-    padding-bottom: 40px;
+    padding-bottom: 120px;
+  }
+  
+  .bottom-spacer {
+    height: 40px;
   }
   
   .top-bar {
@@ -1832,17 +1836,14 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
           ) : (
             <div className="timeline-card">
               {entries.map((entry, i) => (
-                <button key={entry.id || i} className="timeline-entry" onClick={() => onEditEntry(entry)}>
+                <div key={entry.id || i} className="timeline-entry-static">
                   <span className="entry-time">{entry.time}</span>
                   <div className="entry-details">
                     <span className="entry-type">{entry.type}</span>
                     <span className="entry-name">{entry.name}</span>
                   </div>
-                  <div className="entry-right">
-                    <span className="entry-cal">{entry.cal} kcal</span>
-                    <span className="entry-arrow">›</span>
-                  </div>
-                </button>
+                  <span className="entry-cal">{entry.cal} kcal</span>
+                </div>
               ))}
             </div>
           )}
@@ -1856,6 +1857,8 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
         <button className="secondary-button full-width animate-in delay-5" onClick={onAddItem}>
           Add missed item
         </button>
+        
+        <div className="bottom-spacer"></div>
       </div>
       
       <style>{`
@@ -1973,26 +1976,16 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
           box-shadow: 0 2px 8px rgba(61, 58, 54, 0.06);
         }
         
-        .timeline-entry {
+        .timeline-entry-static {
           display: flex;
           align-items: center;
           gap: 14px;
           padding: 14px 16px;
-          border: none;
-          background: none;
-          width: 100%;
-          text-align: left;
-          cursor: pointer;
           border-bottom: 1px solid #F5F2ED;
-          transition: background 0.15s ease;
         }
         
-        .timeline-entry:last-child {
+        .timeline-entry-static:last-child {
           border-bottom: none;
-        }
-        
-        .timeline-entry:hover {
-          background: #FAF8F3;
         }
         
         .entry-time {
@@ -2020,20 +2013,9 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
           color: #2D2A26;
         }
         
-        .entry-right {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        
         .entry-cal {
           font-size: 13px;
           color: #7A756E;
-        }
-        
-        .entry-arrow {
-          font-size: 18px;
-          color: #B5B0A8;
         }
         
         .day-total {

@@ -1,6 +1,57 @@
 const { useState, useEffect } = React;
 
 // ============================================
+// LOCAL STORAGE HELPERS
+// ============================================
+const Storage = {
+  get: (key, defaultValue = null) => {
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : defaultValue;
+    } catch (e) {
+      console.error('Storage get error:', e);
+      return defaultValue;
+    }
+  },
+  set: (key, value) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      console.error('Storage set error:', e);
+    }
+  },
+  remove: (key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      console.error('Storage remove error:', e);
+    }
+  }
+};
+
+// Storage keys
+const STORAGE_KEYS = {
+  PROFILE: 'sdn_profile',
+  DAILY_LOGS: 'sdn_daily_logs',
+  ROUTINES: 'sdn_routines',
+  ONBOARDING_COMPLETE: 'sdn_onboarding_complete'
+};
+
+// Get today's date key (YYYY-MM-DD)
+const getTodayKey = () => new Date().toISOString().split('T')[0];
+
+// Get or create today's log
+const getTodayLog = () => {
+  const logs = Storage.get(STORAGE_KEYS.DAILY_LOGS, {});
+  const today = getTodayKey();
+  if (!logs[today]) {
+    logs[today] = { date: today, items: [], totalCalories: 0 };
+    Storage.set(STORAGE_KEYS.DAILY_LOGS, logs);
+  }
+  return logs[today];
+};
+
+// ============================================
 // SHARED STYLES
 // ============================================
 const sharedStyles = `
@@ -26,7 +77,11 @@ const sharedStyles = `
   .screen {
     min-height: 100vh;
     background: #FAF8F3;
-    padding-bottom: 40px;
+    padding-bottom: 120px;
+  }
+  
+  .bottom-spacer {
+    height: 40px;
   }
   
   .top-bar {
@@ -238,7 +293,7 @@ const BottomNav = ({ activeTab, onNavigate, onLogItem }) => {
         onClick={() => onNavigate('routines')}
       >
         <span className="nav-icon">☆</span>
-        <span className="nav-label">Saved</span>
+        <span className="nav-label">Routines</span>
       </button>
       <button 
         className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
@@ -801,13 +856,6 @@ const NutritionCheckRing = ({ score, confidence }) => {
 
 // Nutrient Bar Component
 const NutrientBar = ({ name, percentage, status, icon }) => {
-  const [animatedWidth, setAnimatedWidth] = useState(0);
-  
-  useEffect(() => {
-    const timer = setTimeout(() => setAnimatedWidth(Math.min(percentage, 100)), 100);
-    return () => clearTimeout(timer);
-  }, [percentage]);
-  
   const getBarColor = (status) => {
     if (status === 'good') return '#2D5A3D';
     if (status === 'warning') return '#D4A03D';
@@ -817,9 +865,7 @@ const NutrientBar = ({ name, percentage, status, icon }) => {
   
   const getStatusText = (status, percentage) => {
     if (status === 'good') return '✓';
-    if (status === 'warning') return `${percentage}%`;
-    if (status === 'low') return `${percentage}%`;
-    return '';
+    return `${percentage}%`;
   };
   
   return (
@@ -833,7 +879,7 @@ const NutrientBar = ({ name, percentage, status, icon }) => {
           <div 
             className="nutrient-bar-fill"
             style={{ 
-              width: `${animatedWidth}%`,
+              width: `${Math.min(percentage, 100)}%`,
               background: getBarColor(status)
             }}
           />
@@ -846,30 +892,119 @@ const NutrientBar = ({ name, percentage, status, icon }) => {
   );
 };
 
-const HomeScreen = ({ profile, loggedItems, onLogItem, onViewHistory, onViewRoutines, onViewProfile }) => {
-  const nutrients = [
-    { name: 'Protein', percentage: 92, status: 'good', icon: '🥩' },
-    { name: 'Fat', percentage: 78, status: 'good', icon: '🫒' },
-    { name: 'Fiber', percentage: 65, status: 'good', icon: '🌾' },
-    { name: 'Omega-3', percentage: 35, status: 'low', icon: '🐟' },
-    { name: 'Calcium', percentage: 82, status: 'good', icon: '🦴' },
-  ];
+const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory, onViewRoutines, onViewProfile }) => {
+  // Calculate real data from todayLog
+  const items = todayLog?.items || [];
+  const totalCalories = todayLog?.totalCalories || 0;
   
-  const calories = { current: 780, min: 720, max: 850 };
-  const calorieStatus = calories.current > calories.max ? 'high' : calories.current < calories.min ? 'low' : 'good';
+  // Calculate calorie targets based on profile
+  const weightKg = profile?.weight || 15;
+  const activityMultiplier = profile?.activityLevel === 'active' ? 1.6 : profile?.activityLevel === 'low' ? 1.2 : 1.4;
+  const baseCalories = Math.round(70 * Math.pow(weightKg, 0.75) * activityMultiplier);
+  const calorieMin = Math.round(baseCalories * 0.9);
+  const calorieMax = Math.round(baseCalories * 1.1);
   
-  const gaps = [
-    { text: 'Omega-3 may be low', icon: '⚠' },
-    { text: 'No joint-support source logged', icon: '⚠' },
-  ];
+  const calories = { current: totalCalories, min: calorieMin, max: calorieMax };
+  const calorieStatus = totalCalories > calorieMax ? 'high' : totalCalories < calorieMin ? 'low' : 'good';
   
-  const fixes = [
-    'Add fish oil supplement',
-    'Try sardine topper 2x weekly',
-  ];
+  // Calculate nutrient totals from logged items
+  const calculateNutrients = () => {
+    if (items.length === 0) {
+      return [
+        { name: 'Protein', percentage: 0, status: 'low', icon: '🥩' },
+        { name: 'Fat', percentage: 0, status: 'low', icon: '🫒' },
+        { name: 'Fiber', percentage: 0, status: 'low', icon: '🌾' },
+        { name: 'Omega-3', percentage: 0, status: 'low', icon: '🐟' },
+        { name: 'Calcium', percentage: 0, status: 'low', icon: '🦴' },
+      ];
+    }
+    
+    // Sum nutrients from all items
+    const totals = { protein: 0, fat: 0, fiber: 0, omega3: 0, calcium: 0 };
+    
+    items.forEach(item => {
+      // Check if item has actual nutrient data
+      if (item.nutrients && (item.nutrients.protein || item.nutrients.fat)) {
+        totals.protein += item.nutrients.protein || 0;
+        totals.fat += item.nutrients.fat || 0;
+        totals.fiber += item.nutrients.fiber || 0;
+        totals.omega3 += item.nutrients.omega3 || 0;
+        totals.calcium += item.nutrients.calcium || 0;
+      } else if (item.calories > 0) {
+        // Estimate nutrients from calories (typical senior dog food ratios)
+        const calFactor = item.calories / 100;
+        totals.protein += 6.25 * calFactor;
+        totals.fat += 1.67 * calFactor;
+        totals.fiber += 0.5 * calFactor;
+        totals.calcium += 0.03 * calFactor;
+        // Omega-3 only if supplement or fish
+        if (item.type === 'supplement' || (item.name && item.name.toLowerCase().includes('fish'))) {
+          totals.omega3 += 0.05 * calFactor;
+        }
+      }
+    });
+    
+    // Daily targets based on dog's daily calorie needs (not what they've eaten)
+    // Use the calculated daily calorie target, not totalCalories consumed
+    const dailyCalorieTarget = (calorieMin + calorieMax) / 2;
+    const scaleFactor = dailyCalorieTarget / 1000;
+    
+    const targets = {
+      protein: 56.3 * scaleFactor,  // ~45g for 800kcal dog
+      fat: 13.8 * scaleFactor,       // ~11g for 800kcal dog
+      fiber: 5 * scaleFactor,        // ~4g for 800kcal dog
+      omega3: 0.11 * scaleFactor,    // ~88mg for 800kcal dog
+      calcium: 1.25 * scaleFactor    // ~1g for 800kcal dog
+    };
+    
+    const getStatus = (pct) => {
+      if (isNaN(pct) || pct === 0) return 'low';
+      return pct >= 80 ? 'good' : pct >= 50 ? 'warning' : 'low';
+    };
+    
+    const calcPct = (val, target) => {
+      if (target === 0) return 0;
+      return Math.min(100, Math.round((val / target) * 100));
+    };
+    
+    return [
+      { name: 'Protein', percentage: calcPct(totals.protein, targets.protein), status: getStatus((totals.protein / targets.protein) * 100), icon: '🥩' },
+      { name: 'Fat', percentage: calcPct(totals.fat, targets.fat), status: getStatus((totals.fat / targets.fat) * 100), icon: '🫒' },
+      { name: 'Fiber', percentage: calcPct(totals.fiber, targets.fiber), status: getStatus((totals.fiber / targets.fiber) * 100), icon: '🌾' },
+      { name: 'Omega-3', percentage: calcPct(totals.omega3, targets.omega3), status: getStatus((totals.omega3 / targets.omega3) * 100), icon: '🐟' },
+      { name: 'Calcium', percentage: calcPct(totals.calcium, targets.calcium), status: getStatus((totals.calcium / targets.calcium) * 100), icon: '🦴' },
+    ];
+  };
   
-  const itemCount = loggedItems.length;
-  const confidence = itemCount >= 4 ? 'High' : itemCount >= 2 ? 'Medium' : 'Low';
+  const nutrients = calculateNutrients();
+  
+  // Calculate gaps based on low nutrients
+  const gaps = nutrients
+    .filter(n => n.status === 'low' || n.status === 'warning')
+    .map(n => ({ text: `${n.name} may be low`, icon: '⚠' }));
+  
+  // Suggested fixes based on gaps
+  const fixes = [];
+  if (nutrients.find(n => n.name === 'Omega-3' && n.status !== 'good')) {
+    fixes.push('Add fish oil supplement');
+  }
+  if (nutrients.find(n => n.name === 'Protein' && n.status !== 'good')) {
+    fixes.push('Add a protein-rich meal or topper');
+  }
+  if (nutrients.find(n => n.name === 'Fiber' && n.status !== 'good')) {
+    fixes.push('Consider adding pumpkin or vegetables');
+  }
+  
+  const itemCount = items.length;
+  const confidence = itemCount >= 4 ? 'High' : itemCount >= 2 ? 'Medium' : itemCount > 0 ? 'Low' : 'No data';
+  
+  // Format items for display
+  const displayItems = items.map(item => ({
+    id: item.id,
+    time: item.time,
+    name: item.brand ? `${item.type} · ${item.brand} ${item.name}` : `${item.type} · ${item.name}`,
+    calories: item.calories
+  }));
   
   return (
     <div className="screen home-screen">
@@ -960,18 +1095,25 @@ const HomeScreen = ({ profile, loggedItems, onLogItem, onViewHistory, onViewRout
           <h3 className="section-label">Logged today</h3>
           <span className="logged-count">{itemCount} items</span>
         </div>
-        {loggedItems.length === 0 ? (
+        {displayItems.length === 0 ? (
           <p className="empty-text">Nothing logged yet. Tap + to add.</p>
         ) : (
           <div className="logged-list">
-            {loggedItems.slice(0, 3).map((item, i) => (
-              <div key={i} className="logged-item">
+            {displayItems.slice(0, 5).map((item, i) => (
+              <div key={item.id || i} className="logged-item">
                 <span className="logged-time">{item.time}</span>
-                <span className="logged-name">{item.type ? item.type.charAt(0).toUpperCase() + item.type.slice(1).toLowerCase() : ''}: {item.name}</span>
+                <span className="logged-name">{item.name}</span>
+                {item.calories > 0 && <span className="logged-cal">{item.calories} kcal</span>}
+                <button 
+                  className="delete-btn"
+                  onClick={(e) => { e.stopPropagation(); onDeleteItem(item.id); }}
+                >
+                  ×
+                </button>
               </div>
             ))}
-            {loggedItems.length > 3 && (
-              <span className="logged-more">+{loggedItems.length - 3} more</span>
+            {displayItems.length > 5 && (
+              <span className="logged-more">+{displayItems.length - 5} more</span>
             )}
           </div>
         )}
@@ -1242,6 +1384,29 @@ const homeStyles = `
   .logged-name {
     font-size: 13px;
     color: #5C5852;
+    flex: 1;
+  }
+  
+  .logged-cal {
+    font-size: 12px;
+    color: #9A958E;
+    margin-right: 4px;
+  }
+  
+  .delete-btn {
+    background: none;
+    border: none;
+    color: #B5B0A8;
+    font-size: 18px;
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+  }
+  
+  .delete-btn:hover {
+    background: rgba(139, 58, 58, 0.1);
+    color: #8B3A3A;
   }
   
   .logged-more {
@@ -1266,21 +1431,71 @@ const homeStyles = `
 // ============================================
 // HISTORY SCREEN
 // ============================================
-const HistoryScreen = ({ onBack, onSelectDay }) => {
-  const days = [
-    { date: 'Today', score: 78, confidence: 'Medium', status: 'partial', entries: 3, flags: ['Omega-3 low'] },
-    { date: 'Yesterday', score: 84, confidence: 'High', status: 'complete', entries: 5, flags: [] },
-    { date: 'Mar 26', score: 71, confidence: 'Medium', status: 'partial', entries: 4, flags: ['Calories high'] },
-    { date: 'Mar 25', score: 62, confidence: 'Low', status: 'low-confidence', entries: 2, flags: ['Incomplete'] },
-    { date: 'Mar 24', score: 88, confidence: 'High', status: 'complete', entries: 6, flags: [] },
-    { date: 'Mar 23', score: 79, confidence: 'Medium', status: 'complete', entries: 4, flags: ['Omega-3 low'] },
-    { date: 'Mar 22', score: 81, confidence: 'High', status: 'complete', entries: 5, flags: ['Omega-3 low'] },
-  ];
+const HistoryScreen = ({ allLogs, onBack, onSelectDay }) => {
+  // Convert allLogs object to sorted array
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr + 'T12:00:00');
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (dateStr === today.toISOString().split('T')[0]) return 'Today';
+    if (dateStr === yesterday.toISOString().split('T')[0]) return 'Yesterday';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
   
-  // Compute stats
-  const avgScore = Math.round(days.reduce((sum, d) => sum + d.score, 0) / days.length);
-  const lastWeekAvg = 72;
-  const scoreTrend = avgScore - lastWeekAvg;
+  const calculateDayScore = (log) => {
+    if (!log.items || log.items.length === 0) return 0;
+    const itemCount = log.items.length;
+    const hasCalories = log.totalCalories > 0;
+    // Simple scoring: more items + calories = higher score
+    const baseScore = Math.min(itemCount * 15, 60);
+    const calorieBonus = hasCalories ? 20 : 0;
+    const confidenceBonus = itemCount >= 4 ? 20 : itemCount >= 2 ? 10 : 0;
+    return Math.min(baseScore + calorieBonus + confidenceBonus, 100);
+  };
+  
+  const days = Object.entries(allLogs || {})
+    .sort((a, b) => b[0].localeCompare(a[0])) // Sort by date descending
+    .slice(0, 14) // Last 14 days
+    .map(([dateKey, log]) => {
+      const score = calculateDayScore(log);
+      const itemCount = log.items?.length || 0;
+      return {
+        dateKey,
+        date: formatDate(dateKey),
+        score,
+        confidence: itemCount >= 4 ? 'High' : itemCount >= 2 ? 'Medium' : 'Low',
+        status: itemCount >= 4 ? 'complete' : itemCount > 0 ? 'partial' : 'low-confidence',
+        entries: itemCount,
+        flags: score < 60 ? ['Needs attention'] : [],
+        totalCalories: log.totalCalories || 0,
+        items: log.items || []
+      };
+    });
+  
+  // Show empty state if no history
+  if (days.length === 0) {
+    return (
+      <div className="screen">
+        <div className="top-bar">
+          <button className="back-button" onClick={onBack}>←</button>
+          <span className="top-bar-title">History</span>
+          <div style={{ width: 40 }}></div>
+        </div>
+        <div className="screen-content" style={{ textAlign: 'center', paddingTop: 60 }}>
+          <p style={{ color: '#9A958E', fontSize: 15 }}>No history yet. Start logging to see your progress.</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Compute stats from last 7 days
+  const last7Days = days.slice(0, 7);
+  const avgScore = last7Days.length > 0 
+    ? Math.round(last7Days.reduce((sum, d) => sum + d.score, 0) / last7Days.length)
+    : 0;
+  const daysLogged = last7Days.filter(d => d.status !== 'low-confidence').length;
   
   const getScoreColor = (score) => {
     if (score >= 75) return '#2D5A3D';
@@ -1290,9 +1505,9 @@ const HistoryScreen = ({ onBack, onSelectDay }) => {
   
   const getStatusLabel = (status) => {
     switch (status) {
-      case 'complete': return 'Full day logged';
-      case 'partial': return 'Partial log';
-      case 'low-confidence': return 'Incomplete';
+      case 'complete': return 'Complete';
+      case 'partial': return 'Partial';
+      case 'low-confidence': return 'Low confidence';
       default: return '';
     }
   };
@@ -1308,14 +1523,11 @@ const HistoryScreen = ({ onBack, onSelectDay }) => {
       <div className="screen-content">
         <div className="weekly-summary-card animate-in">
           <div className="summary-header-row">
-            <h3 className="summary-title">Last 7 days</h3>
-            <span className={`trend-badge ${scoreTrend >= 0 ? 'positive' : 'negative'}`}>
-              {scoreTrend >= 0 ? '↑' : '↓'} {Math.abs(scoreTrend)} vs last week
-            </span>
+            <h3 className="summary-title">This week</h3>
           </div>
           <div className="summary-inline">
             <span>Avg score: <strong>{avgScore}</strong></span>
-            <span>Days logged: <strong>{days.filter(d => d.status !== 'low-confidence').length}/7</strong></span>
+            <span>Days logged: <strong>{daysLogged}/7</strong></span>
           </div>
         </div>
         
@@ -1485,21 +1697,78 @@ const HistoryScreen = ({ onBack, onSelectDay }) => {
 // DAY DETAIL SCREEN
 // ============================================
 const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
-  const entries = [
-    { time: '8:00', type: 'Meal', name: 'Senior kibble', amount: '1.5 cups', cal: 570 },
-    { time: '10:30', type: 'Treat', name: 'Training biscuits', amount: '3 pieces', cal: 45 },
-    { time: '12:00', type: 'Supplement', name: 'Fish oil', amount: '1 pump', cal: 15 },
-    { time: '17:30', type: 'Meal', name: 'Senior kibble', amount: '1 cup', cal: 380 },
-    { time: '19:00', type: 'Extra', name: 'Chicken topper', amount: '~50g', cal: 80 },
-  ];
+  // Use real items from day data
+  const entries = (day.items || []).map(item => ({
+    id: item.id,
+    time: item.time || '—',
+    type: item.type || 'Item',
+    name: item.name || 'Unknown',
+    amount: item.amount ? `${item.amount} ${item.unit || ''}` : '',
+    cal: item.calories || 0
+  }));
   
-  const nutrients = [
-    { name: 'Protein', value: 85, status: 'good' },
-    { name: 'Fat', value: 72, status: 'good' },
-    { name: 'Fiber', value: 65, status: 'good' },
-    { name: 'Omega-3', value: 40, status: 'warning' },
-    { name: 'Calcium', value: 78, status: 'good' },
-  ];
+  // Calculate nutrients from items
+  const calculateNutrients = () => {
+    const items = day.items || [];
+    const totalCal = day.totalCalories || 0;
+    
+    if (items.length === 0 || totalCal === 0) {
+      return [
+        { name: 'Protein', value: 0, status: 'low' },
+        { name: 'Fat', value: 0, status: 'low' },
+        { name: 'Fiber', value: 0, status: 'low' },
+        { name: 'Omega-3', value: 0, status: 'low' },
+        { name: 'Calcium', value: 0, status: 'low' },
+      ];
+    }
+    
+    const totals = { protein: 0, fat: 0, fiber: 0, omega3: 0, calcium: 0 };
+    
+    items.forEach(item => {
+      if (item.nutrients && (item.nutrients.protein || item.nutrients.fat)) {
+        totals.protein += item.nutrients.protein || 0;
+        totals.fat += item.nutrients.fat || 0;
+        totals.fiber += item.nutrients.fiber || 0;
+        totals.omega3 += item.nutrients.omega3 || 0;
+        totals.calcium += item.nutrients.calcium || 0;
+      } else if (item.calories > 0) {
+        const calFactor = item.calories / 100;
+        totals.protein += 6.25 * calFactor;
+        totals.fat += 1.67 * calFactor;
+        totals.fiber += 0.5 * calFactor;
+        totals.calcium += 0.03 * calFactor;
+        if (item.type === 'supplement' || (item.name && item.name.toLowerCase().includes('fish'))) {
+          totals.omega3 += 0.05 * calFactor;
+        }
+      }
+    });
+    
+    // Use fixed daily target of ~800 kcal for a typical senior dog
+    // This gives consistent percentages regardless of how much logged
+    const dailyTarget = 800;
+    const scaleFactor = dailyTarget / 1000;
+    const targets = {
+      protein: 56.3 * scaleFactor,
+      fat: 13.8 * scaleFactor,
+      fiber: 5 * scaleFactor,
+      omega3: 0.11 * scaleFactor,
+      calcium: 1.25 * scaleFactor
+    };
+    
+    const calcPct = (val, target) => target === 0 ? 0 : Math.min(100, Math.round((val / target) * 100));
+    const getStatus = (pct) => pct >= 80 ? 'good' : pct >= 50 ? 'warning' : 'low';
+    
+    return [
+      { name: 'Protein', value: calcPct(totals.protein, targets.protein), status: getStatus(calcPct(totals.protein, targets.protein)) },
+      { name: 'Fat', value: calcPct(totals.fat, targets.fat), status: getStatus(calcPct(totals.fat, targets.fat)) },
+      { name: 'Fiber', value: calcPct(totals.fiber, targets.fiber), status: getStatus(calcPct(totals.fiber, targets.fiber)) },
+      { name: 'Omega-3', value: calcPct(totals.omega3, targets.omega3), status: getStatus(calcPct(totals.omega3, targets.omega3)) },
+      { name: 'Calcium', value: calcPct(totals.calcium, targets.calcium), status: getStatus(calcPct(totals.calcium, targets.calcium)) },
+    ];
+  };
+  
+  const nutrients = calculateNutrients();
+  const totalCalories = day.totalCalories || entries.reduce((sum, e) => sum + (e.cal || 0), 0);
   
   const getScoreColor = (score) => {
     if (score >= 75) return '#2D5A3D';
@@ -1527,7 +1796,7 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
             {day.score}
           </div>
           <div className="day-summary-text">
-            <span className="day-status-label">{day.status === 'complete' ? 'Full day logged' : 'Partial log'}</span>
+            <span className="day-status-label">{day.status === 'complete' ? 'Complete day' : 'Partial day'}</span>
             <span className="day-confidence">{day.confidence} confidence</span>
           </div>
         </div>
@@ -1553,40 +1822,43 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
           </div>
         </div>
         
-        {day.flag && (
+        {day.flags && day.flags[0] && (
           <div className="day-flag animate-in delay-2">
             <span className="flag-icon">⚠</span>
-            <span className="flag-text">{day.flag}</span>
+            <span className="flag-text">{day.flags[0]}</span>
           </div>
         )}
         
         <div className="day-section animate-in delay-3">
           <h3 className="section-label">Timeline</h3>
-          <div className="timeline-card">
-            {entries.map((entry, i) => (
-              <button key={i} className="timeline-entry" onClick={() => onEditEntry(entry)}>
-                <span className="entry-time">{entry.time}</span>
-                <div className="entry-details">
-                  <span className="entry-type">{entry.type}</span>
-                  <span className="entry-name">{entry.name}</span>
-                </div>
-                <div className="entry-right">
+          {entries.length === 0 ? (
+            <p className="empty-text">No items logged this day.</p>
+          ) : (
+            <div className="timeline-card">
+              {entries.map((entry, i) => (
+                <div key={entry.id || i} className="timeline-entry-static">
+                  <span className="entry-time">{entry.time}</span>
+                  <div className="entry-details">
+                    <span className="entry-type">{entry.type}</span>
+                    <span className="entry-name">{entry.name}</span>
+                  </div>
                   <span className="entry-cal">{entry.cal} kcal</span>
-                  <span className="entry-arrow">›</span>
                 </div>
-              </button>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
         
         <div className="day-total animate-in delay-4">
           <span>Total calories</span>
-          <span className="total-value">1,090 kcal</span>
+          <span className="total-value">{totalCalories.toLocaleString()} kcal</span>
         </div>
         
         <button className="secondary-button full-width animate-in delay-5" onClick={onAddItem}>
           Add missed item
         </button>
+        
+        <div className="bottom-spacer"></div>
       </div>
       
       <style>{`
@@ -1704,26 +1976,16 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
           box-shadow: 0 2px 8px rgba(61, 58, 54, 0.06);
         }
         
-        .timeline-entry {
+        .timeline-entry-static {
           display: flex;
           align-items: center;
           gap: 14px;
           padding: 14px 16px;
-          border: none;
-          background: none;
-          width: 100%;
-          text-align: left;
-          cursor: pointer;
           border-bottom: 1px solid #F5F2ED;
-          transition: background 0.15s ease;
         }
         
-        .timeline-entry:last-child {
+        .timeline-entry-static:last-child {
           border-bottom: none;
-        }
-        
-        .timeline-entry:hover {
-          background: #FAF8F3;
         }
         
         .entry-time {
@@ -1751,20 +2013,9 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
           color: #2D2A26;
         }
         
-        .entry-right {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        
         .entry-cal {
           font-size: 13px;
           color: #7A756E;
-        }
-        
-        .entry-arrow {
-          font-size: 18px;
-          color: #B5B0A8;
         }
         
         .day-total {
@@ -2115,95 +2366,149 @@ const ProfileSettingsScreen = ({ profile, onBack, onUpdateProfile }) => {
 // ROUTINES SCREEN
 // ============================================
 const RoutinesScreen = ({ onBack, onUseRoutine, onCreateRoutine }) => {
-  const [routines, setRoutines] = useState([
-    { 
-      id: 1, 
-      name: 'Morning meal', 
-      items: [
-        { type: 'Meal', name: 'Senior kibble', amount: '1.5 cups' },
-        { type: 'Supplement', name: 'Fish oil', amount: '1 pump' }
-      ],
-      totalCal: 585,
-      usedCount: 12
-    },
-    { 
-      id: 2, 
-      name: 'Evening meal', 
-      items: [
-        { type: 'Meal', name: 'Senior kibble', amount: '1 cup' },
-        { type: 'Supplement', name: 'Joint chew', amount: '1 piece' }
-      ],
-      totalCal: 420,
-      usedCount: 8
-    },
-    { 
-      id: 3, 
-      name: 'Training treats', 
-      items: [
-        { type: 'Treat', name: 'Training biscuits', amount: '10 pieces' }
-      ],
-      totalCal: 150,
-      usedCount: 3
-    },
-  ]);
+  // Start with empty routines - user creates their own
+  const [routines, setRoutines] = useState([]);
   
   return (
     <div className="screen">
       <div className="top-bar">
         <button className="back-button" onClick={onBack}>←</button>
-        <span className="top-bar-title">Saved Meals</span>
+        <span className="top-bar-title">Routines</span>
         <div style={{ width: 40 }}></div>
       </div>
       
       <div className="screen-content">
         <div className="screen-header animate-in">
-          <h1 className="screen-title">Your saved meals</h1>
+          <h1 className="screen-title">Your routines</h1>
           <p className="screen-subtitle">Log multiple items with one tap</p>
         </div>
         
-        <div className="routines-list">
-          {routines.map((routine, i) => (
-            <div key={routine.id} className={`routine-card animate-in delay-${Math.min(i + 1, 4)}`}>
-              <div className="routine-header">
-                <h3 className="routine-name">{routine.name}</h3>
-                <span className="routine-cal">{routine.totalCal} kcal</span>
+        {routines.length === 0 ? (
+          <div className="empty-routines animate-in delay-1">
+            <div className="empty-icon">📋</div>
+            <h3 className="empty-title">No routines yet</h3>
+            <p className="empty-desc">
+              Create a routine for meals you feed regularly. For example:
+            </p>
+            <div className="example-routines">
+              <div className="example-routine">
+                <span className="example-name">🌅 Morning routine</span>
+                <span className="example-items">Kibble + fish oil</span>
               </div>
-              
-              <div className="routine-items">
-                {routine.items.map((item, j) => (
-                  <div key={j} className="routine-item">
-                    <span className="routine-item-type">{item.type}</span>
-                    <span className="routine-item-name">{item.name}</span>
-                    <span className="routine-item-amount">{item.amount}</span>
-                  </div>
-                ))}
+              <div className="example-routine">
+                <span className="example-name">🌙 Evening routine</span>
+                <span className="example-items">Kibble + joint chew</span>
               </div>
-              
-              <div className="routine-footer">
-                <span className="routine-used">Used {routine.usedCount} times</span>
-                <div className="routine-actions">
-                  <button className="routine-edit">Edit</button>
-                  <button className="routine-use" onClick={() => onUseRoutine(routine)}>
-                    Use now
-                  </button>
-                </div>
+              <div className="example-routine">
+                <span className="example-name">🎾 Training day</span>
+                <span className="example-items">Extra treats</span>
               </div>
             </div>
-          ))}
-        </div>
-        
-        <button className="create-routine-button animate-in delay-5" onClick={onCreateRoutine}>
-          <span className="create-icon">+</span>
-          <span>Create saved meal</span>
-        </button>
+            <button className="primary-button" onClick={onCreateRoutine}>
+              Create your first routine
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="routines-list">
+              {routines.map((routine, i) => (
+                <div key={routine.id} className={`routine-card animate-in delay-${Math.min(i + 1, 4)}`}>
+                  <div className="routine-header">
+                    <h3 className="routine-name">{routine.name}</h3>
+                    <span className="routine-cal">{routine.totalCal} kcal</span>
+                  </div>
+                  
+                  <div className="routine-items">
+                    {routine.items.map((item, j) => (
+                      <div key={j} className="routine-item">
+                        <span className="routine-item-type">{item.type}</span>
+                        <span className="routine-item-name">{item.name}</span>
+                        <span className="routine-item-amount">{item.amount}</span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="routine-footer">
+                    <span className="routine-used">Used {routine.usedCount} times</span>
+                    <div className="routine-actions">
+                      <button className="routine-edit">Edit</button>
+                      <button className="routine-use" onClick={() => onUseRoutine(routine)}>
+                        Use now
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <button className="create-routine-button animate-in delay-5" onClick={onCreateRoutine}>
+              <span className="create-icon">+</span>
+              <span>Create new routine</span>
+            </button>
+          </>
+        )}
         
         <div className="routine-tip animate-in delay-5">
           <span className="tip-icon">💡</span>
-          <p className="tip-text">Saved meals let you log common combinations with one tap. Great for breakfast, dinner, or training sessions.</p>
+          <p className="tip-text">Routines save time when you feed the same things regularly. One tap logs everything at once.</p>
         </div>
       </div>
       
       <style>{`
+        .empty-routines {
+          text-align: center;
+          padding: 20px 0 30px;
+        }
+        
+        .empty-icon {
+          font-size: 48px;
+          margin-bottom: 16px;
+        }
+        
+        .empty-title {
+          font-family: 'Fraunces', Georgia, serif;
+          font-size: 20px;
+          font-weight: 500;
+          color: #2D2A26;
+          margin-bottom: 8px;
+        }
+        
+        .empty-desc {
+          font-size: 14px;
+          color: #7A756E;
+          margin-bottom: 20px;
+        }
+        
+        .example-routines {
+          background: #F5F2ED;
+          border-radius: 12px;
+          padding: 16px;
+          margin-bottom: 24px;
+          text-align: left;
+        }
+        
+        .example-routine {
+          display: flex;
+          justify-content: space-between;
+          padding: 10px 0;
+          border-bottom: 1px solid #E8E4DC;
+        }
+        
+        .example-routine:last-child {
+          border-bottom: none;
+        }
+        
+        .example-name {
+          font-size: 14px;
+          font-weight: 500;
+          color: #3D3A36;
+        }
+        
+        .example-items {
+          font-size: 13px;
+          color: #9A958E;
+        }
+        
         .routines-list {
           display: flex;
           flex-direction: column;
@@ -2409,22 +2714,51 @@ const ItemTypeScreen = ({ onSelect, onClose }) => {
 };
 
 const EntryMethodScreen = ({ itemType, onSelect, onBack }) => {
-  const methods = [
-    { id: 'search', icon: '🔍', label: 'Search product', desc: 'For packaged or branded items', tag: 'Most accurate' },
-    { id: 'describe', icon: '✏️', label: 'Describe it', desc: 'For homemade, mixed, or leftovers', tag: null },
-  ];
+  // Different methods based on item type
+  const getMethodsForType = () => {
+    switch(itemType) {
+      case 'meal':
+        return [
+          { id: 'search', icon: '🔍', label: 'Search food', desc: 'Kibble, wet food, or ingredients', tag: 'Most accurate' },
+          { id: 'describe', icon: '✏️', label: 'Describe it', desc: 'Mixed meals or homemade', tag: null },
+        ];
+      case 'treat':
+        return [
+          { id: 'quick', icon: '⚡', label: 'Quick add', desc: 'Common treats with preset calories', tag: 'Fastest' },
+          { id: 'search', icon: '🔍', label: 'Search treat', desc: 'Find specific brand or type', tag: null },
+        ];
+      case 'supplement':
+        return [
+          { id: 'quick', icon: '⚡', label: 'Quick add', desc: 'Fish oil, vitamins, joint chews', tag: 'Fastest' },
+          { id: 'search', icon: '🔍', label: 'Search supplement', desc: 'Find specific brand', tag: null },
+        ];
+      case 'extra':
+        return [
+          { id: 'search', icon: '🔍', label: 'Search ingredient', desc: 'Chicken, veggies, toppers', tag: 'Most accurate' },
+          { id: 'describe', icon: '✏️', label: 'Describe it', desc: 'Table scraps or mixed extras', tag: null },
+        ];
+      default:
+        return [
+          { id: 'search', icon: '🔍', label: 'Search', desc: 'Find in database', tag: null },
+          { id: 'describe', icon: '✏️', label: 'Describe it', desc: 'Estimate from description', tag: null },
+        ];
+    }
+  };
+  
+  const methods = getMethodsForType();
+  const typeLabels = { meal: 'meal', treat: 'treat', supplement: 'supplement', extra: 'extra' };
   
   return (
     <div className="screen">
       <div className="top-bar">
         <button className="back-button" onClick={onBack}>←</button>
-        <span className="top-bar-title">Log {itemType}</span>
+        <span className="top-bar-title">Log {typeLabels[itemType] || itemType}</span>
         <div style={{ width: 40 }}></div>
       </div>
       
       <div className="screen-content">
         <div className="screen-header animate-in">
-          <h1 className="screen-title">How do you want to log this?</h1>
+          <h1 className="screen-title">How do you want to add this?</h1>
         </div>
         
         <div className="method-list">
@@ -2448,6 +2782,212 @@ const EntryMethodScreen = ({ itemType, onSelect, onBack }) => {
         </div>
       </div>
       
+      <style>{logStyles}</style>
+    </div>
+  );
+};
+
+// Quick Add screen for treats and supplements
+const QuickAddScreen = ({ itemType, onSave, onBack, onSearchInstead }) => {
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [amount, setAmount] = useState('1');
+  
+  const quickItems = itemType === 'treat' ? [
+    { id: 't1', name: 'Training treat (small)', cal: 5, unit: 'piece', icon: '🦴' },
+    { id: 't2', name: 'Biscuit treat', cal: 35, unit: 'piece', icon: '🍪' },
+    { id: 't3', name: 'Dental chew', cal: 70, unit: 'piece', icon: '🦷' },
+    { id: 't4', name: 'Jerky strip', cal: 30, unit: 'piece', icon: '🥓' },
+    { id: 't5', name: 'Cheese cube', cal: 40, unit: 'piece', icon: '🧀' },
+    { id: 't6', name: 'Freeze-dried meat', cal: 15, unit: 'piece', icon: '🥩' },
+  ] : [
+    { id: 's1', name: 'Fish oil', cal: 15, unit: 'pump', icon: '🐟', nutrients: { omega3: 0.3 } },
+    { id: 's2', name: 'Salmon oil', cal: 15, unit: 'pump', icon: '🐠', nutrients: { omega3: 0.35 } },
+    { id: 's3', name: 'Glucosamine chew', cal: 10, unit: 'chew', icon: '💊' },
+    { id: 's4', name: 'Probiotic', cal: 5, unit: 'scoop', icon: '🦠' },
+    { id: 's5', name: 'Multivitamin', cal: 5, unit: 'tablet', icon: '💎' },
+    { id: 's6', name: 'Joint supplement', cal: 15, unit: 'chew', icon: '🦴' },
+  ];
+  
+  const handleSave = () => {
+    if (!selectedItem) return;
+    const qty = parseFloat(amount) || 1;
+    onSave({
+      name: selectedItem.name,
+      calories: selectedItem.cal * qty,
+      amount: qty,
+      unit: selectedItem.unit,
+      nutrients: selectedItem.nutrients || {},
+      confidence: 'high'
+    });
+  };
+  
+  return (
+    <div className="screen">
+      <div className="top-bar">
+        <button className="back-button" onClick={onBack}>←</button>
+        <span className="top-bar-title">Quick add {itemType}</span>
+        <div style={{ width: 40 }}></div>
+      </div>
+      
+      <div className="screen-content">
+        <div className="screen-header animate-in">
+          <h1 className="screen-title">Pick a {itemType}</h1>
+          <p className="screen-subtitle">Tap to select, then set amount</p>
+        </div>
+        
+        <div className="quick-grid animate-in delay-1">
+          {quickItems.map((item) => (
+            <button 
+              key={item.id}
+              className={`quick-item ${selectedItem?.id === item.id ? 'selected' : ''}`}
+              onClick={() => setSelectedItem(item)}
+            >
+              <span className="quick-icon">{item.icon}</span>
+              <span className="quick-name">{item.name}</span>
+              <span className="quick-cal">{item.cal} kcal/{item.unit}</span>
+            </button>
+          ))}
+        </div>
+        
+        {selectedItem && (
+          <div className="quick-amount-section animate-in">
+            <label className="field-label">How many?</label>
+            <div className="quick-amount-row">
+              <button 
+                className="amount-btn"
+                onClick={() => setAmount(String(Math.max(1, (parseFloat(amount) || 1) - 1)))}
+              >−</button>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="quick-amount-input"
+                min="1"
+              />
+              <button 
+                className="amount-btn"
+                onClick={() => setAmount(String((parseFloat(amount) || 1) + 1))}
+              >+</button>
+              <span className="amount-unit">{selectedItem.unit}s</span>
+            </div>
+            <div className="quick-total">
+              Total: {Math.round(selectedItem.cal * (parseFloat(amount) || 1))} kcal
+            </div>
+          </div>
+        )}
+        
+        <div className="quick-actions animate-in delay-2">
+          {selectedItem && (
+            <button className="primary-button" onClick={handleSave}>
+              Add {itemType}
+            </button>
+          )}
+          <button className="text-link" onClick={onSearchInstead}>
+            Search for specific brand instead
+          </button>
+        </div>
+      </div>
+      
+      <style>{`
+        .quick-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          margin-bottom: 24px;
+        }
+        .quick-item {
+          background: #FFFFFF;
+          border: 2px solid #E8E4DC;
+          border-radius: 12px;
+          padding: 14px 12px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .quick-item:hover {
+          border-color: #2D5A3D;
+        }
+        .quick-item.selected {
+          border-color: #2D5A3D;
+          background: rgba(45, 90, 61, 0.05);
+        }
+        .quick-icon { font-size: 24px; }
+        .quick-name { 
+          font-size: 13px; 
+          font-weight: 500; 
+          color: #2D2A26;
+          text-align: center;
+        }
+        .quick-cal { 
+          font-size: 11px; 
+          color: #9A958E; 
+        }
+        .quick-amount-section {
+          background: #FFFFFF;
+          border-radius: 14px;
+          padding: 18px;
+          margin-bottom: 20px;
+          box-shadow: 0 2px 8px rgba(61, 58, 54, 0.06);
+        }
+        .quick-amount-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .amount-btn {
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          border: 2px solid #E8E4DC;
+          background: #FFFFFF;
+          font-size: 20px;
+          font-weight: 500;
+          color: #2D5A3D;
+          cursor: pointer;
+        }
+        .amount-btn:hover {
+          border-color: #2D5A3D;
+          background: rgba(45, 90, 61, 0.05);
+        }
+        .quick-amount-input {
+          width: 60px;
+          height: 44px;
+          border: 2px solid #E8E4DC;
+          border-radius: 10px;
+          text-align: center;
+          font-size: 18px;
+          font-weight: 500;
+          font-family: inherit;
+        }
+        .amount-unit {
+          font-size: 14px;
+          color: #7A756E;
+        }
+        .quick-total {
+          margin-top: 14px;
+          font-size: 15px;
+          font-weight: 500;
+          color: #2D5A3D;
+          text-align: center;
+        }
+        .quick-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          align-items: center;
+        }
+        .text-link {
+          background: none;
+          border: none;
+          color: #7A756E;
+          font-size: 14px;
+          cursor: pointer;
+          text-decoration: underline;
+        }
+      `}</style>
       <style>{logStyles}</style>
     </div>
   );
@@ -2483,7 +3023,12 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
             id: p.id,
             brand: p.brand,
             name: p.name,
-            cal: p.kcal_per_serving ? `${Math.round(p.kcal_per_serving)} kcal/${p.serving_size || 'serving'}` : ''
+            type: p.type || 'product',
+            display: p.display || (p.brand ? `${p.brand} ${p.name}` : p.name),
+            cal: p.subtitle || (p.kcal_per_serving ? `${Math.round(p.kcal_per_serving)} kcal/${p.serving_unit || 'serving'}` : ''),
+            kcal_per_serving: p.kcal_per_serving,
+            serving_unit: p.serving_unit,
+            nutrients: p.nutrients || {}
           })));
         }
       } catch (err) {
@@ -2503,7 +3048,7 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
     <div className="screen">
       <div className="top-bar">
         <button className="back-button" onClick={onBack}>←</button>
-        <span className="top-bar-title">Search product</span>
+        <span className="top-bar-title">Search food</span>
         <div style={{ width: 40 }}></div>
       </div>
       
@@ -2512,7 +3057,7 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
           <span className="search-icon">🔍</span>
           <input
             type="text"
-            placeholder="Search brand or product..."
+            placeholder="Search food, ingredient, or brand..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setFocused(true)}
@@ -2524,29 +3069,43 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
           )}
         </div>
         
+        {loading && <p className="loading-hint">Searching...</p>}
+        
         <h3 className="section-label">{showResults ? 'Results' : 'Recent'}</h3>
         
         <div className="product-list">
           {products.map((product, i) => (
             <button 
               key={product.id}
-              className={`product-card animate-in delay-${i + 1}`}
+              className={`product-card animate-in delay-${Math.min(i + 1, 5)}`}
               onClick={() => onSelect(product)}
             >
               <div className="product-info">
-                <span className="product-brand">{product.brand}</span>
-                <span className="product-name">{product.name}</span>
+                {product.brand ? (
+                  <>
+                    <span className="product-brand">{product.brand}</span>
+                    <span className="product-name">{product.name}</span>
+                  </>
+                ) : (
+                  <span className="product-name">{product.name}</span>
+                )}
               </div>
-              <span className="product-cal">{product.cal}</span>
+              <div className="product-right">
+                <span className="product-cal">{product.cal}</span>
+                <span className={`product-type-badge ${product.type}`}>
+                  {product.type === 'ingredient' ? 'Ingredient' : 'Product'}
+                </span>
+              </div>
             </button>
           ))}
+          {showResults && products.length === 0 && !loading && (
+            <p className="no-results">No matches found</p>
+          )}
         </div>
         
-        {!showResults && (
-          <p className="search-hint">
-            Can't find it? <button className="link-btn" onClick={onDescribe}>Describe it instead</button>
-          </p>
-        )}
+        <p className="search-hint">
+          Can't find it? <button className="link-btn" onClick={onDescribe}>Describe it instead</button>
+        </p>
       </div>
       
       <style>{logStyles}</style>
@@ -2557,9 +3116,41 @@ const ProductSearchScreen = ({ onSelect, onBack, onDescribe }) => {
 const AmountScreen = ({ product, onSave, onBack }) => {
   const [amount, setAmount] = useState('1');
   const [unit, setUnit] = useState('cup');
+  const [timeOption, setTimeOption] = useState('now');
   
   const units = ['cup', '½ cup', 'scoop', 'can'];
-  const estimatedCal = Math.round(parseFloat(amount || 0) * 380);
+  
+  // Parse calories from product
+  const baseCalories = product.kcal_per_serving || 
+    (product.cal ? parseInt(product.cal.match(/\d+/)?.[0] || 0) : 380);
+  
+  // Adjust for unit
+  const unitMultiplier = unit === '½ cup' ? 0.5 : 1;
+  const estimatedCal = Math.round(parseFloat(amount || 0) * baseCalories * unitMultiplier);
+  
+  const getTimeString = () => {
+    const now = new Date();
+    if (timeOption === 'now') {
+      return now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+    } else if (timeOption === 'morning') {
+      return '8:00';
+    } else {
+      return '12:00';
+    }
+  };
+  
+  const handleSave = () => {
+    onSave({
+      name: product.name,
+      brand: product.brand,
+      amount: parseFloat(amount) * unitMultiplier,
+      unit: unit === '½ cup' ? 'cup' : unit,
+      calories: estimatedCal,
+      nutrients: product.guaranteed_analysis || {},
+      confidence: 'high',
+      time: getTimeString()
+    });
+  };
   
   return (
     <div className="screen">
@@ -2608,14 +3199,22 @@ const AmountScreen = ({ product, onSave, onBack }) => {
         <div className="form-section animate-in delay-3">
           <label className="field-label">When?</label>
           <div className="time-options">
-            <button className="time-btn active">Breakfast</button>
-            <button className="time-btn">Lunch</button>
-            <button className="time-btn">Dinner</button>
-            <button className="time-btn">Snack</button>
+            <button 
+              className={`time-btn ${timeOption === 'now' ? 'active' : ''}`}
+              onClick={() => setTimeOption('now')}
+            >Now</button>
+            <button 
+              className={`time-btn ${timeOption === 'morning' ? 'active' : ''}`}
+              onClick={() => setTimeOption('morning')}
+            >This morning</button>
+            <button 
+              className={`time-btn ${timeOption === 'earlier' ? 'active' : ''}`}
+              onClick={() => setTimeOption('earlier')}
+            >Earlier</button>
           </div>
         </div>
         
-        <button className="primary-button animate-in delay-4" onClick={onSave}>
+        <button className="primary-button animate-in delay-4" onClick={handleSave}>
           Save item
         </button>
       </div>
@@ -2693,6 +3292,7 @@ const DescribeScreen = ({ onEstimate, onBack }) => {
 const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [estimate, setEstimate] = useState(null);
+  const [rawNutrients, setRawNutrients] = useState({});
   const [error, setError] = useState(null);
   
   useEffect(() => {
@@ -2715,6 +3315,7 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
             totalCal: Math.round(data.nutrients.calories),
             confidence: data.confidence?.band || 'Medium'
           });
+          setRawNutrients(data.nutrients || {});
         } else {
           // Fallback to mock data if API fails
           setEstimate({
@@ -2722,6 +3323,7 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
             totalCal: 300,
             confidence: 'Low'
           });
+          setRawNutrients({ calories: 300 });
         }
       } catch (err) {
         console.error('Estimate error:', err);
@@ -2730,12 +3332,28 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
           totalCal: 300,
           confidence: 'Low'
         });
+        setRawNutrients({ calories: 300 });
       }
       setIsLoading(false);
     };
     
     fetchEstimate();
   }, [description]);
+  
+  const handleConfirm = () => {
+    onConfirm({
+      name: estimate.components.map(c => c.name).join(' + '),
+      calories: estimate.totalCal,
+      nutrients: {
+        protein: rawNutrients.protein || 0,
+        fat: rawNutrients.fat || 0,
+        fiber: rawNutrients.fiber || 0,
+        omega3: rawNutrients.omega3 || 0,
+        calcium: rawNutrients.calcium || 0
+      },
+      confidence: estimate.confidence.toLowerCase()
+    });
+  };
   
   if (isLoading) {
     return (
@@ -2814,7 +3432,7 @@ const EstimateReviewScreen = ({ description, onConfirm, onEdit, onBack }) => {
         
         <div className="button-row animate-in delay-4">
           <button className="secondary-button" onClick={onEdit}>Edit</button>
-          <button className="primary-button" style={{ flex: 2 }} onClick={onConfirm}>Confirm</button>
+          <button className="primary-button" style={{ flex: 2 }} onClick={handleConfirm}>Confirm</button>
         </div>
       </div>
       
@@ -3032,7 +3650,7 @@ const logStyles = `
     width: 100%;
   }
   .product-card:hover { border-color: #2D5A3D; }
-  .product-info { display: flex; flex-direction: column; gap: 3px; }
+  .product-info { display: flex; flex-direction: column; gap: 3px; flex: 1; }
   .product-brand {
     font-size: 12px;
     color: #9A958E;
@@ -3040,12 +3658,46 @@ const logStyles = `
     letter-spacing: 0.5px;
   }
   .product-name { font-size: 15px; font-weight: 500; color: #2D2A26; }
+  .product-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
   .product-cal {
     font-size: 13px;
     color: #7A756E;
-    background: #F5F2ED;
-    padding: 4px 10px;
-    border-radius: 8px;
+  }
+  .product-type-badge {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+  .product-type-badge.ingredient {
+    background: rgba(45, 90, 61, 0.1);
+    color: #2D5A3D;
+  }
+  .product-type-badge.product {
+    background: rgba(212, 160, 61, 0.15);
+    color: #8B6914;
+  }
+  
+  .loading-hint {
+    font-size: 14px;
+    color: #9A958E;
+    text-align: center;
+    padding: 12px 0;
+  }
+  
+  .no-results {
+    font-size: 14px;
+    color: #9A958E;
+    text-align: center;
+    padding: 20px 0;
+    font-style: italic;
   }
   
   .search-hint {
@@ -3294,14 +3946,13 @@ const logStyles = `
 // MAIN APP
 // ============================================
 function App() {
+  // Load initial state from localStorage
+  const [isLoading, setIsLoading] = useState(true);
   const [currentScreen, setCurrentScreen] = useState('welcome');
   const [profile, setProfile] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
-  const [loggedItems, setLoggedItems] = useState([
-    { time: '8:00', name: 'Breakfast · Senior kibble' },
-    { time: '12:30', name: 'Treat · Training biscuits' },
-    { time: '18:00', name: 'Supplement · Fish oil' },
-  ]);
+  const [todayLog, setTodayLog] = useState({ date: getTodayKey(), items: [], totalCalories: 0 });
+  const [allLogs, setAllLogs] = useState({});
   
   // Log flow state
   const [logStep, setLogStep] = useState('itemType');
@@ -3309,6 +3960,46 @@ function App() {
   const [entryMethod, setEntryMethod] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [description, setDescription] = useState('');
+  const [estimatedNutrients, setEstimatedNutrients] = useState(null);
+  
+  // Load data from localStorage on mount
+  useEffect(() => {
+    const savedProfile = Storage.get(STORAGE_KEYS.PROFILE);
+    const savedLogs = Storage.get(STORAGE_KEYS.DAILY_LOGS, {});
+    const onboardingComplete = Storage.get(STORAGE_KEYS.ONBOARDING_COMPLETE, false);
+    
+    if (savedProfile) {
+      setProfile(savedProfile);
+    }
+    
+    setAllLogs(savedLogs);
+    
+    const today = getTodayKey();
+    if (savedLogs[today]) {
+      setTodayLog(savedLogs[today]);
+    }
+    
+    // Skip to home if onboarding already done
+    if (onboardingComplete && savedProfile) {
+      setCurrentScreen('home');
+    }
+    
+    setIsLoading(false);
+  }, []);
+  
+  // Save profile whenever it changes
+  useEffect(() => {
+    if (profile) {
+      Storage.set(STORAGE_KEYS.PROFILE, profile);
+    }
+  }, [profile]);
+  
+  // Save logs whenever they change
+  useEffect(() => {
+    if (Object.keys(allLogs).length > 0) {
+      Storage.set(STORAGE_KEYS.DAILY_LOGS, allLogs);
+    }
+  }, [allLogs]);
   
   const resetLogFlow = () => {
     setLogStep('itemType');
@@ -3316,10 +4007,12 @@ function App() {
     setEntryMethod(null);
     setSelectedProduct(null);
     setDescription('');
+    setEstimatedNutrients(null);
   };
   
   const handleProfileComplete = (p) => {
     setProfile(p);
+    Storage.set(STORAGE_KEYS.ONBOARDING_COMPLETE, true);
     setCurrentScreen('home');
   };
   
@@ -3332,15 +4025,64 @@ function App() {
     setCurrentScreen('log');
   };
   
-  const handleLogComplete = () => {
+  const handleLogComplete = (logData) => {
     const now = new Date();
-    const time = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+    const defaultTime = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+    const today = getTodayKey();
+    
+    // Create the new item with full nutrient data
     const newItem = {
-      time,
-      name: selectedProduct ? `${itemType} · ${selectedProduct.name}` : `${itemType} · ${description.slice(0, 30)}...`
+      id: Date.now().toString(),
+      time: logData?.time || defaultTime,
+      type: itemType,
+      name: selectedProduct ? selectedProduct.name : (logData?.name || description.slice(0, 40)),
+      brand: selectedProduct?.brand || null,
+      amount: logData?.amount || 1,
+      unit: logData?.unit || 'serving',
+      calories: logData?.calories || selectedProduct?.kcal_per_serving || 0,
+      nutrients: logData?.nutrients || estimatedNutrients || {},
+      confidence: logData?.confidence || (selectedProduct ? 'high' : 'medium'),
+      source: selectedProduct ? 'database' : 'estimated'
     };
-    setLoggedItems(prev => [...prev, newItem]);
+    
+    // Update today's log
+    const updatedTodayLog = {
+      ...todayLog,
+      items: [...todayLog.items, newItem],
+      totalCalories: todayLog.totalCalories + (newItem.calories || 0)
+    };
+    
+    setTodayLog(updatedTodayLog);
+    
+    // Update all logs
+    const updatedAllLogs = {
+      ...allLogs,
+      [today]: updatedTodayLog
+    };
+    setAllLogs(updatedAllLogs);
+    
     setLogStep('success');
+  };
+  
+  const handleDeleteLogItem = (itemId) => {
+    const today = getTodayKey();
+    const itemToDelete = todayLog.items.find(item => item.id === itemId);
+    
+    if (!itemToDelete) return;
+    
+    const updatedTodayLog = {
+      ...todayLog,
+      items: todayLog.items.filter(item => item.id !== itemId),
+      totalCalories: todayLog.totalCalories - (itemToDelete.calories || 0)
+    };
+    
+    setTodayLog(updatedTodayLog);
+    
+    const updatedAllLogs = {
+      ...allLogs,
+      [today]: updatedTodayLog
+    };
+    setAllLogs(updatedAllLogs);
   };
   
   const handleSelectDay = (day) => {
@@ -3351,13 +4093,50 @@ function App() {
   const handleUseRoutine = (routine) => {
     const now = new Date();
     const time = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
+    const today = getTodayKey();
+    
     const newItems = routine.items.map(item => ({
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       time,
-      name: `${item.type} · ${item.name}`
+      type: item.type,
+      name: item.name,
+      brand: item.brand || null,
+      amount: item.amount || 1,
+      unit: item.unit || 'serving',
+      calories: item.calories || 0,
+      nutrients: item.nutrients || {},
+      confidence: 'high',
+      source: 'routine'
     }));
-    setLoggedItems(prev => [...prev, ...newItems]);
+    
+    const addedCalories = newItems.reduce((sum, item) => sum + (item.calories || 0), 0);
+    
+    const updatedTodayLog = {
+      ...todayLog,
+      items: [...todayLog.items, ...newItems],
+      totalCalories: todayLog.totalCalories + addedCalories
+    };
+    
+    setTodayLog(updatedTodayLog);
+    
+    const updatedAllLogs = {
+      ...allLogs,
+      [today]: updatedTodayLog
+    };
+    setAllLogs(updatedAllLogs);
+    
     setCurrentScreen('home');
   };
+  
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <style>{sharedStyles}</style>
+        <div style={{ textAlign: 'center', color: '#7A756E' }}>Loading...</div>
+      </div>
+    );
+  }
   
   // Render screens
   if (currentScreen === 'welcome') {
@@ -3384,8 +4163,9 @@ function App() {
         <style>{sharedStyles}</style>
         <HomeScreen 
           profile={profile}
-          loggedItems={loggedItems}
+          todayLog={todayLog}
           onLogItem={handleLogItem}
+          onDeleteItem={handleDeleteLogItem}
           onViewHistory={() => setCurrentScreen('history')}
           onViewRoutines={() => setCurrentScreen('routines')}
           onViewProfile={() => setCurrentScreen('settings')}
@@ -3400,10 +4180,15 @@ function App() {
   }
   
   if (currentScreen === 'history') {
+    // Merge todayLog into allLogs for display
+    const today = getTodayKey();
+    const mergedLogs = { ...allLogs, [today]: todayLog };
+    
     return (
       <div className="app-container">
         <style>{sharedStyles}</style>
         <HistoryScreen 
+          allLogs={mergedLogs}
           onBack={() => setCurrentScreen('home')}
           onSelectDay={handleSelectDay}
         />
@@ -3483,9 +4268,24 @@ function App() {
             itemType={itemType}
             onSelect={(method) => { 
               setEntryMethod(method); 
-              setLogStep(method === 'search' ? 'productSearch' : 'describe'); 
+              if (method === 'search') {
+                setLogStep('productSearch');
+              } else if (method === 'quick') {
+                setLogStep('quickAdd');
+              } else {
+                setLogStep('describe');
+              }
             }}
             onBack={() => setLogStep('itemType')}
+          />
+        )}
+        
+        {logStep === 'quickAdd' && (
+          <QuickAddScreen 
+            itemType={itemType}
+            onSave={handleLogComplete}
+            onBack={() => setLogStep('entryMethod')}
+            onSearchInstead={() => setLogStep('productSearch')}
           />
         )}
         

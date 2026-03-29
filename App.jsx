@@ -482,6 +482,90 @@ const WelcomeScreen = ({ onGetStarted }) => {
 };
 
 // ============================================
+// EXPECTATIONS SCREEN (Estimation Disclosure)
+// ============================================
+const ExpectationsScreen = ({ onContinue }) => {
+  return (
+    <div className="screen expectations-screen">
+      <div className="expectations-content">
+        <div className="expectations-icon animate-in">
+          <svg viewBox="0 0 80 80" width="64" height="64">
+            <circle cx="40" cy="40" r="38" fill="#E8E4DC" stroke="#D4CFC5" strokeWidth="2"/>
+            <path d="M25 40 L35 50 L55 30" stroke="#2D5A3D" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        
+        <h1 className="expectations-title animate-in delay-1">How this works</h1>
+        
+        <div className="expectations-body animate-in delay-2">
+          <p className="expectations-text">
+            We estimate nutrients based on what you log. These are estimates, not exact values.
+          </p>
+          <p className="expectations-text">
+            No app has access to complete nutrient data for every pet food. Think of this as a guide to spot likely gaps, not a lab analysis.
+          </p>
+          <p className="expectations-text subtle">
+            For specific health concerns, always talk to your vet.
+          </p>
+        </div>
+        
+        <button className="primary-button animate-in delay-3" onClick={onContinue}>
+          Got it
+        </button>
+      </div>
+      
+      <style>{`
+        .expectations-screen {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 40px 32px;
+        }
+        
+        .expectations-content {
+          text-align: center;
+          max-width: 320px;
+        }
+        
+        .expectations-icon {
+          margin-bottom: 24px;
+        }
+        
+        .expectations-title {
+          font-family: 'Fraunces', Georgia, serif;
+          font-size: 28px;
+          font-weight: 500;
+          color: #2D2A26;
+          margin-bottom: 24px;
+          line-height: 1.2;
+        }
+        
+        .expectations-body {
+          margin-bottom: 40px;
+        }
+        
+        .expectations-text {
+          font-size: 16px;
+          color: #5C5852;
+          line-height: 1.6;
+          margin-bottom: 16px;
+        }
+        
+        .expectations-text:last-child {
+          margin-bottom: 0;
+        }
+        
+        .expectations-text.subtle {
+          font-size: 14px;
+          color: #7A756E;
+          font-style: italic;
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// ============================================
 // DOG PROFILE SETUP
 // ============================================
 const ProfileSetupScreen = ({ onComplete }) => {
@@ -1051,7 +1135,7 @@ const HomeScreen = ({ profile, todayLog, onLogItem, onDeleteItem, onViewHistory,
         </div>
         <div className="header-text">
           <h1>{profile.name}'s Nutrition</h1>
-          <p>Today · {confidence} confidence</p>
+          <p>Today · {confidence} confidence · <span className="estimates-label">Estimates</span></p>
         </div>
       </header>
       
@@ -1185,6 +1269,11 @@ const homeStyles = `
     font-size: 13px;
     color: #7A756E;
     margin-top: 2px;
+  }
+  
+  .estimates-label {
+    color: #9A958E;
+    font-size: 12px;
   }
   
   .calories-section {
@@ -5136,7 +5225,16 @@ function App() {
     return (
       <div className="app-container">
         <style>{sharedStyles}</style>
-        <WelcomeScreen onGetStarted={() => setCurrentScreen('profile')} />
+        <WelcomeScreen onGetStarted={() => setCurrentScreen('expectations')} />
+      </div>
+    );
+  }
+  
+  if (currentScreen === 'expectations') {
+    return (
+      <div className="app-container">
+        <style>{sharedStyles}</style>
+        <ExpectationsScreen onContinue={() => setCurrentScreen('profile')} />
       </div>
     );
   }

@@ -2688,7 +2688,7 @@ const CreateSavedMealScreen = ({ onSave, onBack, existingMeal = null }) => {
     try {
       const res = await fetch(`${API_BASE}/products?q=${encodeURIComponent(query)}&limit=10`);
       const data = await res.json();
-      setSearchResults(data.products || []);
+      setSearchResults(data.results || []);
     } catch (e) {
       console.error('Search error:', e);
       setSearchResults([]);
@@ -2704,11 +2704,11 @@ const CreateSavedMealScreen = ({ onSave, onBack, existingMeal = null }) => {
   const addItem = (product) => {
     const newItem = {
       id: Date.now(),
-      name: product.name,
+      name: product.display || product.name,
       productId: product.id,
-      type: product.source === 'ingredient' ? 'extra' : 'meal',
+      type: product.type === 'ingredient' ? 'extra' : 'meal',
       amount: '1 serving',
-      calories: product.calories_per_serving || 0,
+      calories: product.kcal_per_serving || 0,
       nutrients: product.nutrients || {}
     };
     setItems([...items, newItem]);
@@ -2808,10 +2808,10 @@ const CreateSavedMealScreen = ({ onSave, onBack, existingMeal = null }) => {
                       className="search-result-item"
                       onClick={() => addItem(product)}
                     >
-                      <span className="result-name">{product.name}</span>
+                      <span className="result-name">{product.display || product.name}</span>
                       <span className="result-meta">
-                        {product.source === 'ingredient' ? 'Ingredient' : product.brand}
-                        {product.calories_per_serving && ` · ${product.calories_per_serving} kcal`}
+                        {product.type === 'ingredient' ? 'Ingredient' : product.brand}
+                        {product.kcal_per_serving && ` · ${Math.round(product.kcal_per_serving)} kcal`}
                       </span>
                     </button>
                   ))}

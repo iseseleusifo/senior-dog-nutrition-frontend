@@ -1695,21 +1695,75 @@ const HistoryScreen = ({ allLogs, onBack, onSelectDay }) => {
 // DAY DETAIL SCREEN
 // ============================================
 const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
-  const entries = [
-    { time: '8:00', type: 'Meal', name: 'Senior kibble', amount: '1.5 cups', cal: 570 },
-    { time: '10:30', type: 'Treat', name: 'Training biscuits', amount: '3 pieces', cal: 45 },
-    { time: '12:00', type: 'Supplement', name: 'Fish oil', amount: '1 pump', cal: 15 },
-    { time: '17:30', type: 'Meal', name: 'Senior kibble', amount: '1 cup', cal: 380 },
-    { time: '19:00', type: 'Extra', name: 'Chicken topper', amount: '~50g', cal: 80 },
-  ];
+  // Use real items from day data
+  const entries = (day.items || []).map(item => ({
+    id: item.id,
+    time: item.time || '—',
+    type: item.type || 'Item',
+    name: item.name || 'Unknown',
+    amount: item.amount ? `${item.amount} ${item.unit || ''}` : '',
+    cal: item.calories || 0
+  }));
   
-  const nutrients = [
-    { name: 'Protein', value: 85, status: 'good' },
-    { name: 'Fat', value: 72, status: 'good' },
-    { name: 'Fiber', value: 65, status: 'good' },
-    { name: 'Omega-3', value: 40, status: 'warning' },
-    { name: 'Calcium', value: 78, status: 'good' },
-  ];
+  // Calculate nutrients from items
+  const calculateNutrients = () => {
+    const items = day.items || [];
+    const totalCal = day.totalCalories || 0;
+    
+    if (items.length === 0 || totalCal === 0) {
+      return [
+        { name: 'Protein', value: 0, status: 'low' },
+        { name: 'Fat', value: 0, status: 'low' },
+        { name: 'Fiber', value: 0, status: 'low' },
+        { name: 'Omega-3', value: 0, status: 'low' },
+        { name: 'Calcium', value: 0, status: 'low' },
+      ];
+    }
+    
+    const totals = { protein: 0, fat: 0, fiber: 0, omega3: 0, calcium: 0 };
+    
+    items.forEach(item => {
+      if (item.nutrients && (item.nutrients.protein || item.nutrients.fat)) {
+        totals.protein += item.nutrients.protein || 0;
+        totals.fat += item.nutrients.fat || 0;
+        totals.fiber += item.nutrients.fiber || 0;
+        totals.omega3 += item.nutrients.omega3 || 0;
+        totals.calcium += item.nutrients.calcium || 0;
+      } else if (item.calories > 0) {
+        const calFactor = item.calories / 100;
+        totals.protein += 6.25 * calFactor;
+        totals.fat += 1.67 * calFactor;
+        totals.fiber += 0.5 * calFactor;
+        totals.calcium += 0.03 * calFactor;
+        if (item.type === 'Supplement' || (item.name && item.name.toLowerCase().includes('fish'))) {
+          totals.omega3 += 0.05 * calFactor;
+        }
+      }
+    });
+    
+    const scaleFactor = totalCal > 0 ? totalCal / 1000 : 1;
+    const targets = {
+      protein: 56.3 * scaleFactor,
+      fat: 13.8 * scaleFactor,
+      fiber: 5 * scaleFactor,
+      omega3: 0.11 * scaleFactor,
+      calcium: 1.25 * scaleFactor
+    };
+    
+    const calcPct = (val, target) => target === 0 ? 0 : Math.min(100, Math.round((val / target) * 100));
+    const getStatus = (pct) => pct >= 80 ? 'good' : pct >= 50 ? 'warning' : 'low';
+    
+    return [
+      { name: 'Protein', value: calcPct(totals.protein, targets.protein), status: getStatus(calcPct(totals.protein, targets.protein)) },
+      { name: 'Fat', value: calcPct(totals.fat, targets.fat), status: getStatus(calcPct(totals.fat, targets.fat)) },
+      { name: 'Fiber', value: calcPct(totals.fiber, targets.fiber), status: getStatus(calcPct(totals.fiber, targets.fiber)) },
+      { name: 'Omega-3', value: calcPct(totals.omega3, targets.omega3), status: getStatus(calcPct(totals.omega3, targets.omega3)) },
+      { name: 'Calcium', value: calcPct(totals.calcium, targets.calcium), status: getStatus(calcPct(totals.calcium, targets.calcium)) },
+    ];
+  };
+  
+  const nutrients = calculateNutrients();
+  const totalCalories = day.totalCalories || entries.reduce((sum, e) => sum + (e.cal || 0), 0);
   
   const getScoreColor = (score) => {
     if (score >= 75) return '#2D5A3D';
@@ -1763,35 +1817,39 @@ const DayDetailScreen = ({ day, onBack, onEditEntry, onAddItem }) => {
           </div>
         </div>
         
-        {day.flag && (
+        {day.flags && day.flags[0] && (
           <div className="day-flag animate-in delay-2">
             <span className="flag-icon">⚠</span>
-            <span className="flag-text">{day.flag}</span>
+            <span className="flag-text">{day.flags[0]}</span>
           </div>
         )}
         
         <div className="day-section animate-in delay-3">
           <h3 className="section-label">Timeline</h3>
-          <div className="timeline-card">
-            {entries.map((entry, i) => (
-              <button key={i} className="timeline-entry" onClick={() => onEditEntry(entry)}>
-                <span className="entry-time">{entry.time}</span>
-                <div className="entry-details">
-                  <span className="entry-type">{entry.type}</span>
-                  <span className="entry-name">{entry.name}</span>
-                </div>
-                <div className="entry-right">
-                  <span className="entry-cal">{entry.cal} kcal</span>
-                  <span className="entry-arrow">›</span>
-                </div>
-              </button>
-            ))}
-          </div>
+          {entries.length === 0 ? (
+            <p className="empty-text">No items logged this day.</p>
+          ) : (
+            <div className="timeline-card">
+              {entries.map((entry, i) => (
+                <button key={entry.id || i} className="timeline-entry" onClick={() => onEditEntry(entry)}>
+                  <span className="entry-time">{entry.time}</span>
+                  <div className="entry-details">
+                    <span className="entry-type">{entry.type}</span>
+                    <span className="entry-name">{entry.name}</span>
+                  </div>
+                  <div className="entry-right">
+                    <span className="entry-cal">{entry.cal} kcal</span>
+                    <span className="entry-arrow">›</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         
         <div className="day-total animate-in delay-4">
           <span>Total calories</span>
-          <span className="total-value">1,090 kcal</span>
+          <span className="total-value">{totalCalories.toLocaleString()} kcal</span>
         </div>
         
         <button className="secondary-button full-width animate-in delay-5" onClick={onAddItem}>
